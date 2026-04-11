@@ -1,0 +1,148 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: shooting_results
+    // Document ID: auto-generated
+    // Fields:
+    //   - lane: number (1-8)
+    //   - target: number (4, 7, 8)
+    //   - scores: list of numbers or null (size 3)
+    //   - timestamp: number
+    //   - reporterId: string (UID)
+    //
+    // Collection: calibration_results
+    // Document ID: lane number (string)
+    // Fields:
+    //   - lane: number (1-8)
+    //   - scores: list of numbers or null (size 3)
+    //   - hits: list of maps {x: number, y: number} (size 3)
+    //   - timestamp: number
+    //   - reporterId: string (UID)
+    //
+    // Collection: shooting_queue
+    // Document ID: auto-generated or timestamp
+    // Fields:
+    //   - id: string
+    //   - name: string (max 100 chars)
+    //   - rank: string
+    //   - position: string
+    //   - unit: string
+    //   - status: string ('Pending', 'Completed')
+    //   - shootingId: string
+    //   - order: number
+    //
+    // Collection: system_status
+    // Document ID: 'global'
+    // Fields:
+    //   - signal: string ('SAFE', 'DANGER', 'IDLE')
+    //   - timestamp: number
+    //   - sender: string
+    //
+    // Collection: shooting_history
+    // Document ID: auto-generated
+    // Fields:
+    //   - name: string
+    //   - results: list of maps
+    //   - timestamp: number
+    //   - totalSoldiers: number
+    //   - averageScore: string
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN' ||
+          request.auth.token.email == "dangnam02101999@gmail.com");
+    }
+
+    function isReporter() {
+      // In this app, we don't have a strict role check in Firestore yet, 
+      // but we can check if they are authenticated.
+      return isAuthenticated();
+    }
+
+    function isValidShootingResult(data) {
+      return data.lane is number && data.lane >= 1 && data.lane <= 8 &&
+             data.target is number && (data.target == 4 || data.target == 7 || data.target == 8) &&
+             data.scores is list && data.scores.size() == 3 &&
+             data.timestamp is number &&
+             data.reporterId == request.auth.uid;
+    }
+
+    function isValidCalibrationResult(data) {
+      return data.lane is number && data.lane >= 1 && data.lane <= 8 &&
+             data.scores is list && data.scores.size() == 3 &&
+             data.hits is list && data.hits.size() == 3 &&
+             data.timestamp is number &&
+             data.reporterId == request.auth.uid;
+    }
+
+    function isValidSoldier(data) {
+      return data.id is string && data.id.size() <= 50 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.rank is string && data.rank.size() <= 50 &&
+             data.position is string && data.position.size() <= 100 &&
+             data.unit is string && data.unit.size() <= 100 &&
+             data.status in ['Pending', 'Completed'] &&
+             data.shootingId is string && data.shootingId.size() <= 50 &&
+             data.order is number;
+    }
+
+    function isValidSystemStatus(data) {
+      return data.signal in ['SAFE', 'DANGER', 'IDLE'] &&
+             data.timestamp is number &&
+             data.sender is string && data.sender.size() <= 50;
+    }
+
+    function isValidHistory(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.results is list && data.results.size() <= 1000 &&
+             data.timestamp is number &&
+             data.totalSoldiers is number &&
+             data.averageScore is string && data.averageScore.size() <= 10;
+    }
+
+    match /shooting_results/{resultId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidShootingResult(request.resource.data);
+      allow delete: if isAdmin() || isAuthenticated(); // Clerk needs to clear results
+    }
+
+    match /calibration_results/{laneId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidCalibrationResult(request.resource.data);
+    }
+
+    match /shooting_queue/{soldierId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isAuthenticated();
+      allow delete: if isAdmin() || isAuthenticated();
+    }
+
+    match /system_status/{statusId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidSystemStatus(request.resource.data);
+    }
+
+    match /shooting_history/{sessionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidHistory(request.resource.data);
+      allow update: if isAuthenticated() && isValidHistory(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if isAdmin();
+    }
+  }
+}

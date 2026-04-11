@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Times New Roman", Times, serif;
+  --font-headline: "Times New Roman", Times, serif;
+
+  --color-tactical-green: #343c0a;
+  --color-tactical-green-light: #4b5320;
+  --color-tactical-accent: #dfe8a6;
+  --color-tactical-danger: #a30013;
+  --color-tactical-warning: #e67e22;
+  --color-tactical-blue: #4b53bc;
+  
+  --shadow-tactical: 0 4px 20px rgba(26, 28, 20, 0.1);
+}
+
+@layer base {
+  html {
+    font-family: "Times New Roman", Times, serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-[#f9f9f9] text-[#1a1c1c];
+    font-family: "Times New Roman", Times, serif;
+  }
+
+  /* Mobile optimization */
+  button, a {
+    @apply touch-manipulation;
+  }
+
+  input, select, textarea {
+    @apply text-base; /* Prevents iOS zoom */
+  }
+}
+
+.military-grid {
+  background-image: radial-gradient(circle, #77786b 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.04;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

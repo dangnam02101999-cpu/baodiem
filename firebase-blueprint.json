@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "ShootingResult": {
+      "title": "Shooting Result",
+      "description": "A single shooting session result for a lane",
+      "type": "object",
+      "properties": {
+        "lane": { "type": "number", "description": "The lane number (1-8)" },
+        "target": { "type": "number", "description": "The target number (4, 7, 8)" },
+        "scores": { "type": "array", "items": { "type": ["number", "null"] }, "description": "Array of 3 scores" },
+        "timestamp": { "type": "number", "description": "Unix timestamp of the result" },
+        "reporterId": { "type": "string", "description": "UID of the reporter" }
+      },
+      "required": ["lane", "target", "scores", "timestamp", "reporterId"]
+    },
+    "CalibrationResult": {
+      "title": "Calibration Result",
+      "description": "Calibration data for a specific lane",
+      "type": "object",
+      "properties": {
+        "lane": { "type": "number", "description": "The lane number (1-8)" },
+        "scores": { "type": "array", "items": { "type": ["number", "null"] }, "description": "Array of 3 scores" },
+        "hits": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" }
+            }
+          }
+        },
+        "timestamp": { "type": "number" },
+        "reporterId": { "type": "string" }
+      },
+      "required": ["lane", "scores", "hits", "timestamp", "reporterId"]
+    },
+    "ShootingQueue": {
+      "title": "Shooting Queue",
+      "description": "Soldiers waiting to shoot",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "rank": { "type": "string" },
+        "position": { "type": "string" },
+        "unit": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Completed"] },
+        "shootingId": { "type": "string" },
+        "order": { "type": "number", "description": "Sequence order for display" }
+      },
+      "required": ["id", "name", "rank", "position", "unit", "status", "shootingId", "order"]
+    },
+    "SystemStatus": {
+      "title": "System Status",
+      "description": "Real-time signals for safety and danger",
+      "type": "object",
+      "properties": {
+        "signal": { "type": "string", "enum": ["SAFE", "DANGER", "IDLE"] },
+        "timestamp": { "type": "number" },
+        "sender": { "type": "string" }
+      },
+      "required": ["signal", "timestamp", "sender"]
+    },
+    "ShootingHistory": {
+      "title": "Shooting History",
+      "description": "Saved shooting sessions with full results",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "results": { "type": "array", "items": { "type": "object" } },
+        "timestamp": { "type": "number" },
+        "totalSoldiers": { "type": "number" },
+        "averageScore": { "type": "string" }
+      },
+      "required": ["name", "results", "timestamp", "totalSoldiers", "averageScore"]
+    }
+  },
+  "firestore": {
+    "shooting_results/{resultId}": {
+      "schema": "ShootingResult",
+      "description": "Collection of all shooting results"
+    },
+    "calibration_results/{laneId}": {
+      "schema": "CalibrationResult",
+      "description": "Latest calibration data per lane"
+    },
+    "shooting_queue/{soldierId}": {
+      "schema": "ShootingQueue",
+      "description": "Queue of soldiers for the shooting session"
+    },
+    "system_status/{statusId}": {
+      "schema": "SystemStatus",
+      "description": "Real-time system signals"
+    },
+    "shooting_history/{sessionId}": {
+      "schema": "ShootingHistory",
+      "description": "History of saved shooting sessions"
+    }
+  }
+}
