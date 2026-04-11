@@ -25,31 +25,40 @@ export default function ClerkView() {
   const [systemSignal, setSystemSignal] = useState<{ signal: string, timestamp: number, sender: string } | null>(null);
   const [isBlinking, setIsBlinking] = useState(false);
 
-  // Sound effects
-  const playSafeSound = () => {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // High pitch
-    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-    oscillator.start();
-    oscillator.stop(audioCtx.currentTime + 0.2);
-  };
-
-  const playDangerSound = () => {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    oscillator.type = 'sawtooth';
-    oscillator.frequency.setValueAtTime(150, audioCtx.currentTime); // Low buzz
-    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-    oscillator.start();
-    oscillator.stop(audioCtx.currentTime + 1);
+  // Voice announcement
+  const speakSignal = (text: string) => {
+    if (!('speechSynthesis' in window)) return;
+    
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Try to find a high-quality Vietnamese voice
+    const voices = window.speechSynthesis.getVoices();
+    const viVoice = voices.find(v => v.lang.includes('vi-VN'));
+    if (viVoice) {
+      utterance.voice = viVoice;
+    }
+    
+    utterance.lang = 'vi-VN';
+    utterance.rate = 1.0; // Standard rate
+    utterance.pitch = 1.0; // Standard pitch
+    utterance.volume = 1.0;
+    
+    // Repeat 3 times
+    let count = 0;
+    utterance.onend = () => {
+      count++;
+      if (count < 3) {
+        // Small delay between repetitions for clarity
+        setTimeout(() => {
+          window.speechSynthesis.speak(utterance);
+        }, 300);
+      }
+    };
+    
+    window.speechSynthesis.speak(utterance);
   };
 
   useEffect(() => {
@@ -89,10 +98,11 @@ export default function ClerkView() {
         
         const isRecent = Date.now() - data.timestamp < 5000;
         
-        if (data.signal !== 'IDLE' && isRecent) {
+        // Only react if the signal is from the REPORTER
+        if (data.signal !== 'IDLE' && isRecent && data.sender === 'REPORTER') {
           setIsBlinking(true);
-          if (data.signal === 'SAFE') playSafeSound();
-          if (data.signal === 'DANGER') playDangerSound();
+          if (data.signal === 'SAFE') speakSignal('An toàn');
+          if (data.signal === 'DANGER') speakSignal('Nguy hiểm');
           
           // Auto-reset UI after 5 seconds
           setTimeout(() => setIsBlinking(false), 5000);
