@@ -107,8 +107,8 @@ export default function ClerkView() {
         
         const isRecent = Date.now() - data.timestamp < 5000;
         
-        // Only react if the signal is from the REPORTER
-        if (data.signal !== 'IDLE' && isRecent && data.sender === 'REPORTER') {
+        // Only react if the signal is from a REPORTER
+        if (data.signal !== 'IDLE' && isRecent && (data.sender === 'REPORTER' || data.sender === 'REPORTER_CALIB')) {
           setIsBlinking(true);
           if (data.signal === 'SAFE') playSafeSound();
           if (data.signal === 'DANGER') playDangerSound();
@@ -439,7 +439,7 @@ export default function ClerkView() {
           className={cn(
             "flex-1 py-3 sm:py-4 rounded-xl flex flex-row sm:flex-col items-center justify-center gap-3 sm:gap-1 shadow-sm transition-all active:scale-95 group border-2",
             isBlinking && systemSignal?.signal === 'SAFE' 
-              ? "bg-tactical-green text-tactical-accent border-tactical-green" 
+              ? "bg-tactical-green text-tactical-accent border-tactical-green animate-blink" 
               : "bg-white text-gray-400 border-gray-100 hover:bg-gray-50"
           )}
         >
@@ -454,7 +454,7 @@ export default function ClerkView() {
           className={cn(
             "flex-1 py-3 sm:py-4 rounded-xl flex flex-row sm:flex-col items-center justify-center gap-3 sm:gap-1 shadow-sm transition-all active:scale-95 group border-2",
             isBlinking && systemSignal?.signal === 'DANGER' 
-              ? "bg-red-600 text-white border-red-600" 
+              ? "bg-red-600 text-white border-red-600 animate-blink" 
               : "bg-white text-gray-400 border-gray-100 hover:bg-gray-50"
           )}
         >

@@ -313,7 +313,7 @@ export default function TargetReporterView() {
           onClick={() => sendSignal('SAFE')}
           className={cn(
             "flex flex-col items-center justify-center py-2 rounded-lg shadow-sm active:scale-95 transition-all border",
-            isBlinking && systemSignal?.signal === 'SAFE' ? "bg-tactical-green text-tactical-accent border-tactical-green" : "bg-white text-gray-400 border-gray-100"
+            isBlinking && systemSignal?.signal === 'SAFE' ? "bg-tactical-green text-tactical-accent border-tactical-green animate-blink" : "bg-white text-gray-400 border-gray-100"
           )}
         >
           <Shield className="w-5 h-5 mb-0.5 fill-current" />
@@ -323,7 +323,7 @@ export default function TargetReporterView() {
           onClick={() => sendSignal('DANGER')}
           className={cn(
             "flex flex-col items-center justify-center py-2 rounded-lg shadow-sm active:scale-95 transition-all border",
-            isBlinking && systemSignal?.signal === 'DANGER' ? "bg-red-600 text-white border-red-600" : "bg-white text-gray-400 border-gray-100"
+            isBlinking && systemSignal?.signal === 'DANGER' ? "bg-red-600 text-white border-red-600 animate-blink" : "bg-white text-gray-400 border-gray-100"
           )}
         >
           <AlertTriangle className="w-5 h-5 mb-0.5 fill-current" />

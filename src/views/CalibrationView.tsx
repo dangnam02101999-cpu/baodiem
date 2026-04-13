@@ -375,7 +375,7 @@ export default function CalibrationView() {
                 className={cn(
                   "py-3 rounded-xl flex flex-col items-center justify-center gap-1 shadow-sm transition-all active:scale-95 group border-2",
                   isBlinking && systemSignal?.signal === 'SAFE' 
-                    ? "bg-tactical-green text-tactical-accent border-tactical-green" 
+                    ? "bg-tactical-green text-tactical-accent border-tactical-green animate-blink" 
                     : "bg-white text-gray-400 border-gray-100 hover:bg-gray-50"
                 )}
               >
@@ -390,7 +390,7 @@ export default function CalibrationView() {
                 className={cn(
                   "py-3 rounded-xl flex flex-col items-center justify-center gap-1 shadow-sm transition-all active:scale-95 group border-2",
                   isBlinking && systemSignal?.signal === 'DANGER' 
-                    ? "bg-red-600 text-white border-red-600" 
+                    ? "bg-red-600 text-white border-red-600 animate-blink" 
                     : "bg-white text-gray-400 border-gray-100 hover:bg-gray-50"
                 )}
               >
