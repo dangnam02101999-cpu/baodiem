@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserPlus, UploadCloud, Save, Edit, Trash2, Printer, ChevronDown, Verified, Loader2 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 import { cn } from '../lib/utils';
 import { MOCK_SOLDIERS, RANKS } from '../constants';
@@ -17,6 +17,8 @@ export default function ManagementView() {
   const [soldiers, setSoldiers] = useState<any[]>([]);
   const [isSyncing, setIsSyncing] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
 
   useEffect(() => {
     // Real-time listener for shooting queue in Firestore, ordered by 'order'
@@ -94,6 +96,23 @@ export default function ManagementView() {
       // No alert needed for delete to keep it fast, or use a non-blocking UI
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    setIsDeletingAll(true);
+    try {
+      const batch = writeBatch(db);
+      soldiers.forEach(s => {
+        batch.delete(doc(db, 'shooting_queue', s.id));
+      });
+      await batch.commit();
+      setShowDeleteAllConfirm(false);
+      alert('Đã xóa toàn bộ danh sách quân nhân!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'shooting_queue_all');
+    } finally {
+      setIsDeletingAll(false);
     }
   };
 
@@ -334,13 +353,22 @@ export default function ManagementView() {
               <UserPlus className="w-4 h-4" />
               NHẬP LIỆU NHANH
             </h2>
-            <button 
-              onClick={downloadTemplate}
-              className="text-[10px] font-bold text-tactical-blue hover:underline uppercase flex items-center gap-1"
-            >
-              <UploadCloud className="w-3 h-3" />
-              TẢI FILE MẪU
-            </button>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setShowDeleteAllConfirm(true)}
+                className="text-[10px] font-bold text-red-500 hover:text-red-700 uppercase flex items-center gap-1 transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+                XÓA TẤT CẢ
+              </button>
+              <button 
+                onClick={downloadTemplate}
+                className="text-[10px] font-bold text-tactical-blue hover:underline uppercase flex items-center gap-1"
+              >
+                <UploadCloud className="w-3 h-3" />
+                TẢI FILE MẪU
+              </button>
+            </div>
           </div>
 
           {/* Import from Excel Area */}
@@ -560,6 +588,43 @@ export default function ManagementView() {
           <Printer className="w-8 h-8" />
         </button>
       </div>
+      {/* Delete All Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteAllConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl border-t-8 border-red-600"
+            >
+              <div className="flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4">
+                  <Trash2 className="w-8 h-8" />
+                </div>
+                <h3 className="font-headline text-xl font-black text-gray-900 mb-2 uppercase tracking-tight">XÓA TOÀN BỘ DANH SÁCH?</h3>
+                <p className="text-gray-500 text-sm mb-8">Hành động này không thể hoàn tác. Tất cả quân nhân trong danh sách sẽ bị xóa vĩnh viễn.</p>
+                
+                <div className="flex gap-3 w-full">
+                  <button 
+                    onClick={() => setShowDeleteAllConfirm(false)}
+                    className="flex-1 px-6 py-3 bg-gray-100 text-gray-600 rounded-xl font-headline font-bold text-xs uppercase tracking-widest hover:bg-gray-200 transition-all"
+                  >
+                    HỦY BỎ
+                  </button>
+                  <button 
+                    onClick={handleDeleteAll}
+                    disabled={isDeletingAll}
+                    className="flex-1 px-6 py-3 bg-red-600 text-white rounded-xl font-headline font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-600/20 flex items-center justify-center gap-2"
+                  >
+                    {isDeletingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : 'XÁC NHẬN XÓA'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

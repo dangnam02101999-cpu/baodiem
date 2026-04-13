@@ -26,40 +26,49 @@ export default function CalibrationView() {
   const [systemSignal, setSystemSignal] = useState<{ signal: string, timestamp: number, sender: string } | null>(null);
   const [isBlinking, setIsBlinking] = useState(false);
 
-  // Voice announcement
-  const speakSignal = (text: string) => {
-    if (!('speechSynthesis' in window)) return;
+  // Sound effects
+  const playSafeSound = () => {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     
-    // Cancel any ongoing speech
-    window.speechSynthesis.cancel();
-    
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // Try to find a high-quality Vietnamese voice
-    const voices = window.speechSynthesis.getVoices();
-    const viVoice = voices.find(v => v.lang.includes('vi-VN'));
-    if (viVoice) {
-      utterance.voice = viVoice;
-    }
-    
-    utterance.lang = 'vi-VN';
-    utterance.rate = 1.0; // Standard rate
-    utterance.pitch = 1.0; // Standard pitch
-    utterance.volume = 1.0;
-    
-    // Repeat 3 times
-    let count = 0;
-    utterance.onend = () => {
-      count++;
-      if (count < 3) {
-        // Small delay between repetitions for clarity
-        setTimeout(() => {
-          window.speechSynthesis.speak(utterance);
-        }, 300);
-      }
+    // Tinh tinh (Double high beep)
+    const playBeep = (time: number) => {
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(1200, time);
+      gainNode.gain.setValueAtTime(0.2, time);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+      oscillator.start(time);
+      oscillator.stop(time + 0.1);
     };
+
+    playBeep(audioCtx.currentTime);
+    playBeep(audioCtx.currentTime + 0.2);
+    playBeep(audioCtx.currentTime + 0.4);
+  };
+
+  const playDangerSound = () => {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     
-    window.speechSynthesis.speak(utterance);
+    // Tè (Low buzz)
+    const playBuzz = (time: number) => {
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator.type = 'sawtooth';
+      oscillator.frequency.setValueAtTime(150, time);
+      gainNode.gain.setValueAtTime(0.2, time);
+      gainNode.gain.linearRampToValueAtTime(0.01, time + 0.8);
+      oscillator.start(time);
+      oscillator.stop(time + 0.8);
+    };
+
+    playBuzz(audioCtx.currentTime);
+    playBuzz(audioCtx.currentTime + 1.0);
+    playBuzz(audioCtx.currentTime + 2.0);
   };
 
   useEffect(() => {
@@ -83,10 +92,11 @@ export default function CalibrationView() {
         
         const isRecent = Date.now() - data.timestamp < 5000;
         
-        if (data.signal !== 'IDLE' && isRecent) {
+        // Only react if the signal is from the CLERK
+        if (data.signal !== 'IDLE' && isRecent && data.sender === 'CLERK') {
           setIsBlinking(true);
-          if (data.signal === 'SAFE') speakSignal('An toàn');
-          if (data.signal === 'DANGER') speakSignal('Nguy hiểm');
+          if (data.signal === 'SAFE') playSafeSound();
+          if (data.signal === 'DANGER') playDangerSound();
           
           // Auto-reset UI after 5 seconds
           setTimeout(() => setIsBlinking(false), 5000);
@@ -634,7 +644,22 @@ export default function CalibrationView() {
   };
 
   return (
-    <div className="flex-grow flex flex-col p-2 sm:p-4 md:p-8 space-y-8 overflow-y-auto no-scrollbar">
+    <div className="flex-grow flex flex-col p-2 sm:p-4 md:p-8 space-y-8 overflow-y-auto no-scrollbar relative">
+      {/* Signal Overlay */}
+      <AnimatePresence>
+        {isBlinking && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 0.5, 0] }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1, repeat: 5 }}
+            className={cn(
+              "fixed inset-0 z-[100] pointer-events-none",
+              systemSignal?.signal === 'SAFE' ? "bg-tactical-green" : "bg-red-600"
+            )}
+          />
+        )}
+      </AnimatePresence>
       <AnimatePresence mode="wait">
         <motion.div
           key={mode}
