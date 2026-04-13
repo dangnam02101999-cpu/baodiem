@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Shield, Send, Delete, ArrowRight, ListOrdered, Target as TargetIcon, Calculator, Loader2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -14,10 +14,14 @@ export default function TargetReporterView() {
   const [isSending, setIsSending] = useState(false);
   const [systemSignal, setSystemSignal] = useState<{ signal: string, timestamp: number, sender: string } | null>(null);
   const [isBlinking, setIsBlinking] = useState(false);
+  const lastSignalTime = useRef<number>(0);
 
   // Sound effects
-  const playSafeSound = () => {
+  const playSafeSound = async () => {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
     
     // Tinh tinh (Double high beep)
     const playBeep = (time: number) => {
@@ -38,8 +42,11 @@ export default function TargetReporterView() {
     playBeep(audioCtx.currentTime + 0.4);
   };
 
-  const playDangerSound = () => {
+  const playDangerSound = async () => {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
     
     // Tè (Low buzz)
     const playBuzz = (time: number) => {
@@ -65,18 +72,25 @@ export default function TargetReporterView() {
     const unsubscribeSignal = onSnapshot(doc(db, 'system_status', 'global'), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data() as any;
-        setSystemSignal(data);
         
-        const isRecent = Date.now() - data.timestamp < 5000;
+        // Use a more robust "recent" check by comparing with last processed timestamp
+        // and allowing a small window for initial load
+        const isNewSignal = data.timestamp > lastSignalTime.current;
+        const isRecent = Date.now() - data.timestamp < 10000; // 10 second window
         
-        // Only react if the signal is from the CLERK
-        if (data.signal !== 'IDLE' && isRecent && data.sender === 'CLERK') {
-          setIsBlinking(true);
-          if (data.signal === 'SAFE') playSafeSound();
-          if (data.signal === 'DANGER') playDangerSound();
+        if (isNewSignal && isRecent) {
+          lastSignalTime.current = data.timestamp;
+          setSystemSignal(data);
           
-          // Auto-reset UI after 5 seconds
-          setTimeout(() => setIsBlinking(false), 5000);
+          // Only react if the signal is from the CLERK
+          if (data.signal !== 'IDLE' && data.sender === 'CLERK') {
+            setIsBlinking(true);
+            if (data.signal === 'SAFE') playSafeSound();
+            if (data.signal === 'DANGER') playDangerSound();
+            
+            // Auto-reset UI after 5 seconds
+            setTimeout(() => setIsBlinking(false), 5000);
+          }
         }
       }
     }, (error) => {

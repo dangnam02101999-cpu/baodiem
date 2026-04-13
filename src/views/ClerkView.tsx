@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Play, Shield, AlertTriangle, ChevronLeft, ChevronRight, Loader2, Save, FileSpreadsheet, Trash2, FolderOpen, Edit, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
@@ -21,13 +21,18 @@ export default function ClerkView() {
   const [isExporting, setIsExporting] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState('');
   const [systemSignal, setSystemSignal] = useState<{ signal: string, timestamp: number, sender: string } | null>(null);
   const [isBlinking, setIsBlinking] = useState(false);
+  const lastSignalTime = useRef<number>(0);
 
   // Sound effects
-  const playSafeSound = () => {
+  const playSafeSound = async () => {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
     
     // Tinh tinh (Double high beep)
     const playBeep = (time: number) => {
@@ -48,8 +53,11 @@ export default function ClerkView() {
     playBeep(audioCtx.currentTime + 0.4);
   };
 
-  const playDangerSound = () => {
+  const playDangerSound = async () => {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
     
     // Tè (Low buzz)
     const playBuzz = (time: number) => {
@@ -103,18 +111,24 @@ export default function ClerkView() {
     const unsubscribeSignal = onSnapshot(doc(db, 'system_status', 'global'), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data() as any;
-        setSystemSignal(data);
         
-        const isRecent = Date.now() - data.timestamp < 5000;
+        // Use a more robust "recent" check by comparing with last processed timestamp
+        const isNewSignal = data.timestamp > lastSignalTime.current;
+        const isRecent = Date.now() - data.timestamp < 10000; // 10 second window
         
-        // Only react if the signal is from a REPORTER
-        if (data.signal !== 'IDLE' && isRecent && (data.sender === 'REPORTER' || data.sender === 'REPORTER_CALIB')) {
-          setIsBlinking(true);
-          if (data.signal === 'SAFE') playSafeSound();
-          if (data.signal === 'DANGER') playDangerSound();
+        if (isNewSignal && isRecent) {
+          lastSignalTime.current = data.timestamp;
+          setSystemSignal(data);
           
-          // Auto-reset UI after 5 seconds
-          setTimeout(() => setIsBlinking(false), 5000);
+          // Only react if the signal is from a REPORTER
+          if (data.signal !== 'IDLE' && (data.sender === 'REPORTER' || data.sender === 'REPORTER_CALIB')) {
+            setIsBlinking(true);
+            if (data.signal === 'SAFE') playSafeSound();
+            if (data.signal === 'DANGER') playDangerSound();
+            
+            // Auto-reset UI after 5 seconds
+            setTimeout(() => setIsBlinking(false), 5000);
+          }
         }
       }
     }, (error) => {
@@ -637,7 +651,7 @@ export default function ClerkView() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {savedSessions.map((session) => (
-                <div key={session.id} className="border border-gray-100 rounded-xl p-4 space-y-3 hover:shadow-md transition-shadow bg-gray-50/50">
+                <div key={session.id} className="border border-gray-100 rounded-xl p-4 space-y-3 hover:shadow-md transition-shadow bg-gray-50/50 flex flex-col">
                   <div className="flex justify-between items-start">
                     <div className="flex-grow">
                       {editingSessionId === session.id ? (
@@ -670,6 +684,38 @@ export default function ClerkView() {
                     </div>
                     <FolderOpen className="w-4 h-4 text-tactical-green/30 flex-shrink-0 ml-2" />
                   </div>
+
+                  {expandedSessionId === session.id && (
+                    <div className="bg-white border border-gray-100 rounded-lg overflow-hidden">
+                      <table className="w-full text-[10px] border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50 text-gray-400 uppercase font-black border-b border-gray-100">
+                            <th className="py-1.5 px-2 text-left">Họ và Tên</th>
+                            <th className="py-1.5 px-2 text-center">Dải</th>
+                            <th className="py-1.5 px-2 text-center">Bia</th>
+                            <th className="py-1.5 px-2 text-center">Điểm</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {session.results?.map((r: any, idx: number) => (
+                            <tr key={idx} className="hover:bg-gray-50/50">
+                              <td className="py-1.5 px-2 font-bold truncate max-w-[80px]">{r.name || '---'}</td>
+                              <td className="py-1.5 px-2 text-center">{r.lane}</td>
+                              <td className="py-1.5 px-2 text-center">{r.target}</td>
+                              <td className="py-1.5 px-2 text-center font-black text-tactical-green">
+                                {Array.isArray(r.scores) 
+                                  ? r.scores.join('/') 
+                                  : typeof r.scores === 'object' && r.scores !== null
+                                    ? Object.values(r.scores).join('/')
+                                    : (r.scores || '---')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2 text-[10px] font-bold uppercase">
                     <div className="bg-white p-2 rounded border border-gray-100">
                       <span className="text-gray-400 block">Quân nhân</span>
@@ -680,32 +726,51 @@ export default function ClerkView() {
                       <span className="text-tactical-green">{session.averageScore}</span>
                     </div>
                   </div>
-                  <div className="flex gap-2 pt-2">
-                    <button 
-                      onClick={() => exportToExcel(session.results, `Ket_qua_${session.name}`)}
-                      className="flex-1 py-2 bg-white border border-tactical-green text-tactical-green rounded-lg font-headline font-black text-[9px] flex items-center justify-center gap-2 hover:bg-tactical-green hover:text-white transition-all active:scale-95"
-                    >
-                      <FileSpreadsheet className="w-3 h-3" />
-                      XUẤT EXCEL
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setEditingSessionId(session.id);
-                        setNewSessionName(session.name);
-                      }}
-                      className="flex-1 py-2 bg-white border border-tactical-blue text-tactical-blue rounded-lg font-headline font-black text-[9px] flex items-center justify-center gap-2 hover:bg-tactical-blue hover:text-white transition-all active:scale-95"
-                      title="Sửa tên"
-                    >
-                      <Edit className="w-3 h-3" />
-                      SỬA TÊN
-                    </button>
-                    <button 
-                      onClick={() => setDeleteConfirmId(session.id)}
-                      className="px-3 py-2 bg-white border border-red-500 text-red-500 rounded-lg font-headline font-black text-[9px] flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all active:scale-95"
-                      title="Xóa phiên"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+
+                  <div className="flex flex-col gap-2 pt-2">
+                    {expandedSessionId === session.id ? (
+                      <button 
+                        onClick={() => setExpandedSessionId(null)}
+                        className="w-full py-2 bg-gray-200 text-gray-600 rounded-lg font-headline font-black text-[9px] flex items-center justify-center gap-2 hover:bg-gray-300 transition-all active:scale-95"
+                      >
+                        THU GỌN
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => setExpandedSessionId(session.id)}
+                        className="w-full py-2 bg-tactical-green text-tactical-accent rounded-lg font-headline font-black text-[9px] flex items-center justify-center gap-2 hover:opacity-90 transition-all active:scale-95"
+                      >
+                        XEM KẾT QUẢ
+                      </button>
+                    )}
+                    
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => exportToExcel(session.results, `Ket_qua_${session.name}`)}
+                        className="flex-1 py-2 bg-white border border-tactical-green text-tactical-green rounded-lg font-headline font-black text-[9px] flex items-center justify-center gap-2 hover:bg-tactical-green hover:text-white transition-all active:scale-95"
+                      >
+                        <FileSpreadsheet className="w-3 h-3" />
+                        XUẤT
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setEditingSessionId(session.id);
+                          setNewSessionName(session.name);
+                        }}
+                        className="flex-1 py-2 bg-white border border-tactical-blue text-tactical-blue rounded-lg font-headline font-black text-[9px] flex items-center justify-center gap-2 hover:bg-tactical-blue hover:text-white transition-all active:scale-95"
+                        title="Sửa tên"
+                      >
+                        <Edit className="w-3 h-3" />
+                        SỬA
+                      </button>
+                      <button 
+                        onClick={() => setDeleteConfirmId(session.id)}
+                        className="px-3 py-2 bg-white border border-red-500 text-red-500 rounded-lg font-headline font-black text-[9px] flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all active:scale-95"
+                        title="Xóa phiên"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

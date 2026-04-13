@@ -9,23 +9,34 @@ interface LayoutProps {
   onTabChange?: (tab: string) => void;
   showNav?: boolean;
   userRole?: 'ADMIN' | 'USER' | null;
+  selectedRole?: string | null;
   onLogout?: () => void;
 }
 
-export default function Layout({ children, title, activeTab, onTabChange, showNav = true, userRole, onLogout }: LayoutProps) {
+export default function Layout({ children, title, activeTab, onTabChange, showNav = true, userRole, selectedRole, onLogout }: LayoutProps) {
   const allTabs = [
-    { id: 'LOGIN', label: 'LOGIN', icon: LogIn, roles: [] },
-    { id: 'ROLE', label: 'ROLE', icon: UserCircle2, roles: ['USER'] },
-    { id: 'TARGET', label: 'TARGET', icon: Target, roles: ['USER'] },
-    { id: 'CLERK', label: 'CLERK', icon: FileEdit, roles: ['USER'] },
-    { id: 'RESULT', label: 'RESULT', icon: BarChart3, roles: ['ADMIN', 'USER'] },
-    { id: 'MANAGE', label: 'MANAGE', icon: Settings, roles: ['ADMIN'] },
-    { id: 'CALIBRATION', label: 'CALIB', icon: Settings2, roles: ['USER'] },
+    { id: 'ROLE', label: 'VAI TRÒ', icon: UserCircle2, roles: ['USER'] },
+    { id: 'TARGET', label: 'BÁO BIA', icon: Target, roles: ['USER'] },
+    { id: 'CLERK', label: 'THƯ KÝ', icon: FileEdit, roles: ['USER'] },
+    { id: 'RESULT', label: 'KẾT QUẢ', icon: BarChart3, roles: ['ADMIN', 'USER'] },
+    { id: 'MANAGE', label: 'QUẢN LÝ', icon: Settings, roles: ['ADMIN'] },
+    { id: 'CALIBRATION', label: 'HIỆU CHỈNH', icon: Settings2, roles: ['USER'] },
   ];
 
-  const visibleTabs = allTabs.filter(tab => 
+  let visibleTabs = allTabs.filter(tab => 
     tab.roles.length === 0 || (userRole && tab.roles.includes(userRole))
-  ).filter(tab => tab.id !== 'LOGIN');
+  );
+
+  // Special logic for Clerk (Secretary) role
+  if (selectedRole === 'SECRETARY') {
+    visibleTabs = allTabs.filter(tab => ['CLERK', 'RESULT'].includes(tab.id));
+  } else if (selectedRole === 'REPORTER') {
+    visibleTabs = allTabs.filter(tab => ['TARGET', 'RESULT'].includes(tab.id));
+  } else if (selectedRole === 'CALIBRATION') {
+    visibleTabs = allTabs.filter(tab => ['CALIBRATION', 'RESULT'].includes(tab.id));
+  } else if (selectedRole === 'VIEWER') {
+    visibleTabs = allTabs.filter(tab => ['RESULT'].includes(tab.id));
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f9f9f9] text-[#1a1c1c] font-sans">
@@ -59,14 +70,14 @@ export default function Layout({ children, title, activeTab, onTabChange, showNa
       </header>
 
       {/* Main Content */}
-      <main className="flex-grow flex flex-col relative pb-32">
+      <main className="flex-grow flex flex-col relative pb-24">
         <div className="absolute inset-0 military-grid pointer-events-none"></div>
         {children}
       </main>
 
       {/* Bottom Navigation */}
       {showNav && (
-        <nav className="fixed bottom-10 left-0 w-full h-20 bg-[#f3f3f3] flex justify-around items-center px-4 shadow-[0_-4px_40px_rgba(0,0,0,0.05)] z-50">
+        <nav className="fixed bottom-0 left-0 w-full h-20 bg-[#f3f3f3] flex justify-around items-center px-4 shadow-[0_-4px_40px_rgba(0,0,0,0.05)] z-50 border-t border-gray-200">
           {visibleTabs.map((tab) => (
             <button
               key={tab.id}
@@ -79,24 +90,11 @@ export default function Layout({ children, title, activeTab, onTabChange, showNa
               )}
             >
               <tab.icon className="w-6 h-6" />
-              <span className="text-[10px] font-black uppercase mt-1">{tab.label}</span>
             </button>
           ))}
         </nav>
       )}
       
-      {/* Tactical Status Bar */}
-      <div className="fixed bottom-0 w-full bg-[#e8e8e8] h-10 border-t border-black/5 flex items-center px-4 justify-between z-[60]">
-        <div className="flex gap-4 items-center">
-          <span className="text-[8px] font-black tracking-widest text-gray-500">AUTH: READY</span>
-          <div className="w-[1px] h-3 bg-black/10"></div>
-          <span className="text-[8px] font-black tracking-widest text-gray-500">SEC: L4</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[8px] font-black tracking-widest text-tactical-green bg-tactical-accent px-1.5 py-0.5 rounded-sm">ENCRYPTED</span>
-          <span className="text-[8px] font-bold text-gray-500">22:15 ZULU</span>
-        </div>
-      </div>
     </div>
   );
 }

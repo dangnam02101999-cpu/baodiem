@@ -131,8 +131,9 @@ export default function App() {
           }
         }
       }}
-      showNav={isLoggedIn}
+      showNav={isLoggedIn && currentTab !== 'ROLE'}
       userRole={userRole}
+      selectedRole={selectedRole}
       onLogout={handleLogout}
     >
       {renderContent()}
