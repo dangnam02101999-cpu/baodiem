@@ -11,12 +11,31 @@ import { Role } from './types';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
+import { initAudio } from './lib/audio';
+
 export default function App() {
   const [currentTab, setCurrentTab] = useState('LOGIN');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState<'ADMIN' | 'USER' | null>(null);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+
+  useEffect(() => {
+    const handleInteraction = () => {
+      initAudio();
+      // Remove listener after first interaction
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('touchstart', handleInteraction);
+    };
+
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('touchstart', handleInteraction);
+
+    return () => {
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('touchstart', handleInteraction);
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {

@@ -15,6 +15,8 @@ interface HitCoord {
   y: number;
 }
 
+import { playSafeSound, playDangerSound, initAudio } from '../lib/audio';
+
 export default function CalibrationView() {
   const [mode, setMode] = useState<CalibrationMode>('SELECT');
   const [selectedLane, setSelectedLane] = useState<number | null>(null);
@@ -26,57 +28,6 @@ export default function CalibrationView() {
   const [systemSignal, setSystemSignal] = useState<{ signal: string, timestamp: number, sender: string } | null>(null);
   const [isBlinking, setIsBlinking] = useState(false);
   const lastSignalTime = useRef<number>(0);
-
-  // Sound effects
-  const playSafeSound = async () => {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
-    }
-    
-    // Tinh tinh (Double high beep)
-    const playBeep = (time: number) => {
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(1200, time);
-      gainNode.gain.setValueAtTime(0.2, time);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
-      oscillator.start(time);
-      oscillator.stop(time + 0.1);
-    };
-
-    playBeep(audioCtx.currentTime);
-    playBeep(audioCtx.currentTime + 0.2);
-    playBeep(audioCtx.currentTime + 0.4);
-  };
-
-  const playDangerSound = async () => {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
-    }
-    
-    // Tè (Low buzz)
-    const playBuzz = (time: number) => {
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      oscillator.type = 'sawtooth';
-      oscillator.frequency.setValueAtTime(150, time);
-      gainNode.gain.setValueAtTime(0.2, time);
-      gainNode.gain.linearRampToValueAtTime(0.01, time + 0.8);
-      oscillator.start(time);
-      oscillator.stop(time + 0.8);
-    };
-
-    playBuzz(audioCtx.currentTime);
-    playBuzz(audioCtx.currentTime + 1.0);
-    playBuzz(audioCtx.currentTime + 2.0);
-  };
 
   useEffect(() => {
     // Real-time listener for ALL calibration results
@@ -126,6 +77,7 @@ export default function CalibrationView() {
   }, []);
 
   const sendSignal = async (signal: 'SAFE' | 'DANGER') => {
+    initAudio(); // Unlock audio on user interaction
     const path = 'system_status/global';
     try {
       await setDoc(doc(db, 'system_status', 'global'), {
