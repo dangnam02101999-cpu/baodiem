@@ -128,7 +128,15 @@ export default function ClerkView() {
     return getSumForLaneAndTarget(lane, 4) + getSumForLaneAndTarget(lane, 7) + getSumForLaneAndTarget(lane, 8);
   };
 
-  const getClassification = (total: number) => {
+  const getClassification = (total: number, isThreeTargets: boolean) => {
+    if (isThreeTargets) {
+      // Bài bắn 3 bia (tổng tối đa 90)
+      if (total >= 73) return 'Giỏi';
+      if (total >= 57) return 'Khá';
+      if (total >= 45) return 'Đạt';
+      return 'Không đạt';
+    }
+    // Bài bắn 1 bia (tổng tối đa 30)
     if (total >= 27) return 'Giỏi';
     if (total >= 24) return 'Khá';
     if (total >= 18) return 'Đạt';
@@ -154,6 +162,12 @@ export default function ClerkView() {
         const t8 = getSumForLaneAndTarget(lane, 8);
         const total = t4 + t7 + t8;
         
+        // Kiểm tra xem có đủ 3 bia không
+        const hasT4 = results.some(r => r.lane === lane && r.target === 4);
+        const hasT7 = results.some(r => r.lane === lane && r.target === 7);
+        const hasT8 = results.some(r => r.lane === lane && r.target === 8);
+        const isThreeTargets = hasT4 && hasT7 && hasT8;
+        
         return {
           id: soldier?.id || `placeholder-${Date.now()}-${lane}`,
           name: soldier?.name || `Quân nhân Dải ${lane}`,
@@ -163,12 +177,20 @@ export default function ClerkView() {
           lane,
           scores: { target4: t4, target7: t7, target8: t8 },
           total,
-          classification: getClassification(total),
+          classification: getClassification(total, isThreeTargets),
           timestamp: new Date().toISOString()
         };
       });
 
       localStorage.setItem('session_temp_results', JSON.stringify([...savedResults, ...newResults]));
+      
+      // Save results to current_session_results in Firestore for real-time viewing
+      const sessionBatch = writeBatch(db);
+      newResults.forEach(res => {
+        const docRef = doc(collection(db, 'current_session_results'));
+        sessionBatch.set(docRef, res);
+      });
+      await sessionBatch.commit();
       
       // Update soldiers status in Firestore queue instead of deleting
       if (currentSoldiers.length > 0) {
@@ -267,6 +289,12 @@ export default function ClerkView() {
       const resBatch = writeBatch(db);
       resultsSnapshot.docs.forEach(d => resBatch.delete(d.ref));
       await resBatch.commit();
+
+      // Clear current_session_results for the next session
+      const currentResSnapshot = await getDocs(collection(db, 'current_session_results'));
+      const currentResBatch = writeBatch(db);
+      currentResSnapshot.docs.forEach(d => currentResBatch.delete(d.ref));
+      await currentResBatch.commit();
 
       setSessionName('');
       setShowSaveModal(false);

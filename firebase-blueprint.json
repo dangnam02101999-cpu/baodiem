@@ -74,6 +74,31 @@
         "averageScore": { "type": "string" }
       },
       "required": ["name", "results", "timestamp", "totalSoldiers", "averageScore"]
+    },
+    "SessionResult": {
+      "title": "Session Result",
+      "description": "A single soldier's result in the current session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "rank": { "type": "string" },
+        "position": { "type": "string" },
+        "unit": { "type": "string" },
+        "lane": { "type": "number" },
+        "scores": {
+          "type": "object",
+          "properties": {
+            "target4": { "type": "number" },
+            "target7": { "type": "number" },
+            "target8": { "type": "number" }
+          }
+        },
+        "total": { "type": "number" },
+        "classification": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "lane", "scores", "total", "classification", "timestamp"]
     }
   },
   "firestore": {
@@ -96,6 +121,10 @@
     "shooting_history/{sessionId}": {
       "schema": "ShootingHistory",
       "description": "History of saved shooting sessions"
+    },
+    "current_session_results/{resultId}": {
+      "schema": "SessionResult",
+      "description": "Results of the current active shooting session"
     }
   }
 }

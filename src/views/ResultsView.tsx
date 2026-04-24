@@ -11,21 +11,14 @@ export default function ResultsView() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Read from shooting_history to get the latest session results
-    const q = query(collection(db, 'shooting_history'), orderBy('timestamp', 'desc'));
+    // Listen to current_session_results for real-time updates of the ongoing session
+    const q = query(collection(db, 'current_session_results'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        // For simplicity, we show the results of the latest session
-        const latestSession = snapshot.docs[0].data();
-        setSavedResults(latestSession.results || []);
-      } else {
-        // Fallback to localStorage if no history in Firestore yet (for backward compatibility during migration)
-        const data = JSON.parse(localStorage.getItem('saved_results') || '[]');
-        setSavedResults(data);
-      }
+      const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setSavedResults(results);
       setIsLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'shooting_history');
+      handleFirestoreError(error, OperationType.LIST, 'current_session_results');
       setIsLoading(false);
     });
 
@@ -34,12 +27,19 @@ export default function ResultsView() {
 
   const COLORS = ['#dfe8a6', '#4a5d23', '#7a8d43', '#ff4d4d'];
 
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredResults = savedResults.filter(r => 
+    r.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    r.unit?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   const stats = {
-    total: savedResults.length,
-    excellent: savedResults.filter(r => r.classification === 'Giỏi').length,
-    good: savedResults.filter(r => r.classification === 'Khá').length,
-    average: savedResults.filter(r => r.classification === 'Đạt').length,
-    fail: savedResults.filter(r => r.classification === 'Không đạt').length,
+    total: filteredResults.length,
+    excellent: filteredResults.filter(r => r.classification === 'Giỏi').length,
+    good: filteredResults.filter(r => r.classification === 'Khá').length,
+    average: filteredResults.filter(r => r.classification === 'Đạt').length,
+    fail: filteredResults.filter(r => r.classification === 'Không đạt').length,
   };
 
   const pieData = [
@@ -185,6 +185,8 @@ export default function ResultsView() {
               className="pl-9 pr-4 py-1.5 bg-white border border-gray-300 rounded-lg text-[10px] sm:text-xs focus:ring-1 focus:ring-tactical-green focus:border-tactical-green outline-none w-full sm:w-48 md:w-64" 
               placeholder="Tìm kiếm quân nhân..." 
               type="text" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
         </div>
@@ -206,31 +208,39 @@ export default function ResultsView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {savedResults.map((result, index) => (
-                <tr key={result.id} className="hover:bg-[#f3f3f3] transition-colors">
-                  <td className="px-4 py-4 font-mono text-[10px] font-bold text-gray-400">{index + 1}</td>
-                  <td className="px-4 py-4 font-bold text-sm text-[#1a1c1c]">{result.name}</td>
-                  <td className="px-4 py-4 text-xs text-gray-600">{result.rank}</td>
-                  <td className="px-4 py-4 text-xs text-gray-600">{result.position}</td>
-                  <td className="px-4 py-4 text-xs text-gray-600">{result.unit}</td>
-                  <td className="px-4 py-4 font-headline font-black text-tactical-green text-xs">DẢI {result.lane}</td>
-                  <td className="px-4 py-4 text-center font-headline font-bold text-xs">{result.scores.target4}</td>
-                  <td className="px-4 py-4 text-center font-headline font-bold text-xs">{result.scores.target7}</td>
-                  <td className="px-4 py-4 text-center font-headline font-bold text-xs">{result.scores.target8}</td>
-                  <td className="px-4 py-4 text-center font-headline font-black text-tactical-green text-sm">{result.total}</td>
-                  <td className="px-4 py-4 text-center">
-                    <span className={cn(
-                      "px-2 py-1 text-[9px] font-black rounded-md uppercase tracking-tighter",
-                      result.classification === 'Giỏi' ? "bg-tactical-accent text-tactical-green" :
-                      result.classification === 'Khá' ? "bg-tactical-blue text-white" :
-                      result.classification === 'Đạt' ? "bg-tactical-green-light text-tactical-accent" :
-                      "bg-tactical-danger text-white"
-                    )}>
-                      {result.classification}
-                    </span>
+              {filteredResults.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="px-4 py-8 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">
+                    {searchTerm ? 'Không tìm thấy quân nhân phù hợp' : 'Chưa có kết quả trong phiên bắn hiện tại'}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredResults.map((result, index) => (
+                  <tr key={result.id} className="hover:bg-[#f3f3f3] transition-colors">
+                    <td className="px-4 py-4 font-mono text-[10px] font-bold text-gray-400">{index + 1}</td>
+                    <td className="px-4 py-4 font-bold text-sm text-[#1a1c1c]">{result.name}</td>
+                    <td className="px-4 py-4 text-xs text-gray-600">{result.rank}</td>
+                    <td className="px-4 py-4 text-xs text-gray-600">{result.position}</td>
+                    <td className="px-4 py-4 text-xs text-gray-600">{result.unit}</td>
+                    <td className="px-4 py-4 font-headline font-black text-tactical-green text-xs">DẢI {result.lane}</td>
+                    <td className="px-4 py-4 text-center font-headline font-bold text-xs">{result.scores.target4}</td>
+                    <td className="px-4 py-4 text-center font-headline font-bold text-xs">{result.scores.target7}</td>
+                    <td className="px-4 py-4 text-center font-headline font-bold text-xs">{result.scores.target8}</td>
+                    <td className="px-4 py-4 text-center font-headline font-black text-tactical-green text-sm">{result.total}</td>
+                    <td className="px-4 py-4 text-center">
+                      <span className={cn(
+                        "px-2 py-1 text-[9px] font-black rounded-md uppercase tracking-tighter",
+                        result.classification === 'Giỏi' ? "bg-tactical-accent text-tactical-green" :
+                        result.classification === 'Khá' ? "bg-tactical-blue text-white" :
+                        result.classification === 'Đạt' ? "bg-tactical-green-light text-tactical-accent" :
+                        "bg-tactical-danger text-white"
+                      )}>
+                        {result.classification}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

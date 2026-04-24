@@ -111,6 +111,16 @@ service cloud.firestore {
              data.averageScore is string && data.averageScore.size() <= 10;
     }
 
+    function isValidSessionResult(data) {
+      return data.id is string &&
+             data.name is string &&
+             data.lane is number &&
+             data.scores is map &&
+             data.total is number &&
+             data.classification is string &&
+             data.timestamp is string;
+    }
+
     match /shooting_results/{resultId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidShootingResult(request.resource.data);
@@ -137,6 +147,12 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidHistory(request.resource.data);
       allow update: if isAuthenticated() && isValidHistory(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+
+    match /current_session_results/{resultId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidSessionResult(request.resource.data);
       allow delete: if isAuthenticated();
     }
 
