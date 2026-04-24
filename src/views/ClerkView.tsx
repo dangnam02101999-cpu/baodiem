@@ -180,7 +180,7 @@ export default function ClerkView() {
           classification: getClassification(total, isThreeTargets),
           timestamp: new Date().toISOString()
         };
-      });
+      }).filter(r => r.total > 0);
 
       localStorage.setItem('session_temp_results', JSON.stringify([...savedResults, ...newResults]));
       
