@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { toast } from 'react-hot-toast';
 import { Play, Shield, AlertTriangle, ChevronLeft, ChevronRight, Loader2, Save, FileSpreadsheet, Trash2, FolderOpen, Edit, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
@@ -162,7 +163,7 @@ export default function ClerkView() {
         const t8 = getSumForLaneAndTarget(lane, 8);
         const total = t4 + t7 + t8;
         
-        // Kiểm tra xem có đủ 3 bia không
+        // Kiểm tra xem có đủ 3 bia không (nếu có điểm ở cả 3 mục tiêu)
         const hasT4 = results.some(r => r.lane === lane && r.target === 4);
         const hasT7 = results.some(r => r.lane === lane && r.target === 7);
         const hasT8 = results.some(r => r.lane === lane && r.target === 8);
@@ -180,7 +181,7 @@ export default function ClerkView() {
           classification: getClassification(total, isThreeTargets),
           timestamp: new Date().toISOString()
         };
-      }).filter(r => r.total > 0);
+      });
 
       localStorage.setItem('session_temp_results', JSON.stringify([...savedResults, ...newResults]));
       
@@ -217,12 +218,10 @@ export default function ClerkView() {
       });
       await batch.commit();
       
-      alert('Đã lưu kết quả lượt bắn!');
+      toast.success(`Đã lưu kết quả lượt ${currentRound + 1}. Sẵn sàng cho lượt tiếp theo.`);
       
-      // Auto-advance to next round if available
-      if (currentRound < totalRounds - 1) {
-        setCurrentRound(prev => prev + 1);
-      }
+      // Auto-advance to next round
+      setCurrentRound(prev => prev + 1);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'batch_operation');
     } finally {
@@ -374,7 +373,12 @@ export default function ClerkView() {
                     target8: getSumForLaneAndTarget(lane, 8)
                   },
                   total: getTotalForLane(lane),
-                  classification: getClassification(getTotalForLane(lane)),
+                  classification: getClassification(
+                    getTotalForLane(lane),
+                    results.some(r => r.lane === lane && r.target === 4) &&
+                    results.some(r => r.lane === lane && r.target === 7) &&
+                    results.some(r => r.lane === lane && r.target === 8)
+                  ),
                   timestamp: new Date().toISOString()
                 }));
                 exportToExcel(liveData, 'Ket_qua_truc_tiep_luot_ban');

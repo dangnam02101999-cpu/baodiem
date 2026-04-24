@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';
 import LoginView from './views/LoginView';
 import RoleSelectionView from './views/RoleSelectionView';
@@ -156,6 +157,7 @@ export default function App() {
       onLogout={handleLogout}
     >
       {renderContent()}
+      <Toaster position="top-center" />
     </Layout>
   );
 }
