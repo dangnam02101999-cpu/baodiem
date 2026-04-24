@@ -77,13 +77,26 @@ export default function TargetReporterView() {
     const newScores = [...scores];
     const currentScore = newScores[currentH];
     
+    let nextValue: number;
     // Logic: if current score is 1 and user presses 0, it becomes 10
     if (currentScore === 1 && num === 0) {
-      newScores[currentH] = 10;
+      nextValue = 10;
     } else {
-      newScores[currentH] = num;
+      nextValue = num;
     }
+    
+    newScores[currentH] = nextValue;
     setScores(newScores);
+
+    // Auto-advance logic: jumping to next slot
+    // If nextValue is 0, 2-9, or 10 (anything but 1)
+    if (nextValue !== 1) {
+      if (currentH < 2) {
+        setCurrentH(prev => prev + 1);
+      }
+    }
+    // If nextValue is 1, we stay at current slot to allow potentially adding '0' for '10'
+    // or requiring manual jump if the user actually meant '1'.
   };
 
   const handleNext = () => {
@@ -149,120 +162,119 @@ export default function TargetReporterView() {
         )}
       </AnimatePresence>
       {/* Display Area */}
-      <div className="p-3 bg-[#e2e2e2] rounded-lg border-l-4 border-tactical-green shadow-inner shrink-0 mt-2">
+      <div className="p-2 bg-[#e2e2e2] rounded-lg border-l-4 border-tactical-green shadow-inner shrink-0 mt-1">
         <div className="flex justify-between items-center">
           <div>
-            <span className="text-[8px] font-bold uppercase tracking-wider text-tactical-green opacity-70">
+            <span className="text-[7px] font-bold uppercase tracking-wider text-tactical-green opacity-70">
               {selectedTarget ? `BIA ${selectedTarget}` : 'CHƯA CHỌN BIA'} - {selectedLane ? `DẢI ${selectedLane}` : 'CHƯA CHỌN DẢI'}
             </span>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {[0, 1, 2].map((i) => (
                 <React.Fragment key={i}>
                   <div 
                     className={cn(
-                      "flex items-center gap-1 px-2 py-1 rounded transition-colors",
+                      "flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors",
                       currentH === i && "bg-tactical-green/10 ring-1 ring-tactical-green"
                     )}
                     onClick={() => setCurrentH(i)}
                   >
-                    <span className="text-xs font-bold text-tactical-green/60">H{i + 1}:</span>
+                    <span className="text-[10px] font-bold text-tactical-green/60">H{i + 1}:</span>
                     <span className={cn(
-                      "text-2xl font-black text-tactical-green font-headline min-w-[1.5rem] text-center",
-                      currentH === i && "underline decoration-4 underline-offset-4"
+                      "text-xl font-black text-tactical-green font-headline min-w-[1.2rem] text-center",
+                      currentH === i && "underline decoration-2 underline-offset-2"
                     )}>
                       {scores[i] !== null ? scores[i] : '-'}
                     </span>
                   </div>
-                  {i < 2 && <div className="w-[1px] h-4 bg-gray-300"></div>}
+                  {i < 2 && <div className="w-[1px] h-3 bg-gray-300"></div>}
                 </React.Fragment>
               ))}
             </div>
           </div>
           <div className={cn(
-            "flex flex-col items-center gap-1 px-3 py-1 rounded transition-all border",
-            isBlinking && systemSignal?.signal === 'SAFE' ? "bg-tactical-green text-tactical-accent border-tactical-green scale-110" : "bg-white text-gray-300 border-gray-100",
-            isBlinking && systemSignal?.signal === 'DANGER' ? "bg-red-600 text-white border-red-600 scale-110" : ""
+            "flex flex-col items-center justify-center p-1 px-2 rounded transition-all border",
+            isBlinking && systemSignal?.signal === 'SAFE' ? "bg-tactical-green text-tactical-accent border-tactical-green" : "bg-white text-gray-300 border-gray-100",
+            isBlinking && systemSignal?.signal === 'DANGER' ? "bg-red-600 text-white border-red-600" : ""
           )}>
             {isBlinking && systemSignal?.signal === 'DANGER' ? (
-              <AlertTriangle className="w-4 h-4 fill-current" />
+              <AlertTriangle className="w-3.5 h-3.5 fill-current" />
             ) : (
-              <Shield className="w-4 h-4 fill-current" />
+              <Shield className="w-3.5 h-3.5 fill-current" />
             )}
-            <p className="text-[8px] font-black leading-none uppercase">
+            <p className="text-[7px] font-black leading-tight uppercase">
               {isBlinking ? systemSignal?.signal : 'READY'}
             </p>
           </div>
         </div>
       </div>
 
-      <div className="flex-grow flex flex-col gap-2 min-h-0 overflow-y-auto no-scrollbar">
-        {/* Dải Số Section */}
-        <section className="bg-[#f3f3f3] p-2 rounded-lg shrink-0">
-          <div className="flex items-center gap-2 mb-1 border-b border-gray-300 pb-1">
-            <ListOrdered className="text-tactical-green w-4 h-4" />
-            <h3 className="text-[10px] font-bold font-headline uppercase">DẢI SỐ</h3>
-          </div>
-          <div className="grid grid-cols-4 gap-2">
-            {lanes.map((lane) => (
-              <button
-                key={lane}
-                onClick={() => setSelectedLane(lane)}
-                className={cn(
-                  "flex flex-col items-center justify-center py-3 rounded-xl transition-all active:scale-95",
-                  selectedLane === lane 
-                    ? "bg-tactical-green text-tactical-accent shadow-lg" 
-                    : "bg-white border border-gray-200 text-gray-400"
-                )}
-              >
-                <span className="text-[8px] font-black opacity-70">DẢI</span>
-                <span className="text-base font-black">{lane}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-
+      <div className="flex-grow flex flex-col gap-1.5 min-h-0 overflow-y-auto no-scrollbar">
         {/* Bia Số Section */}
-        <section className="bg-[#f3f3f3] p-2 rounded-lg shrink-0">
-          <div className="flex items-center gap-2 mb-1 border-b border-gray-300 pb-1">
-            <TargetIcon className="text-tactical-green w-4 h-4" />
-            <h3 className="text-[10px] font-bold font-headline uppercase">BIA SỐ</h3>
+        <section className="bg-[#f3f3f3] p-1.5 rounded-lg shrink-0">
+          <div className="flex items-center gap-2 mb-1 border-b border-gray-300 pb-0.5">
+            <TargetIcon className="text-tactical-green w-3.5 h-3.5" />
+            <h3 className="text-[9px] font-bold font-headline uppercase">BIA SỐ</h3>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-1.5">
             {targets.map((target) => (
               <button
                 key={target}
                 onClick={() => setSelectedTarget(target)}
                 className={cn(
-                  "flex flex-col items-center justify-center py-3 rounded-xl border transition-all shadow-sm active:scale-95",
+                  "flex flex-col items-center justify-center py-2 rounded-xl border transition-all shadow-sm active:scale-95",
                   selectedTarget === target
                     ? "bg-tactical-green text-tactical-accent border-tactical-green shadow-lg"
                     : "bg-white border-gray-200 text-gray-400"
                 )}
               >
-                <span className="text-[8px] font-black uppercase opacity-70 leading-none">
+                <span className="text-[7px] font-black uppercase opacity-70 leading-none">
                   {selectedTarget === target ? 'SEL' : 'RDY'}
                 </span>
-                <span className="text-sm font-black">Bia {target}</span>
+                <span className="text-xs font-black">Bia {target}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Dải Số Section */}
+        <section className="bg-[#f3f3f3] p-1.5 rounded-lg shrink-0">
+          <div className="flex items-center gap-2 mb-1 border-b border-gray-300 pb-0.5">
+            <ListOrdered className="text-tactical-green w-3.5 h-3.5" />
+            <h3 className="text-[9px] font-bold font-headline uppercase">DẢI SỐ</h3>
+          </div>
+          <div className="grid grid-cols-4 gap-1.5">
+            {lanes.map((lane) => (
+              <button
+                key={lane}
+                onClick={() => setSelectedLane(lane)}
+                className={cn(
+                  "flex flex-col items-center justify-center py-2 rounded-xl transition-all active:scale-95",
+                  selectedLane === lane 
+                    ? "bg-tactical-green text-tactical-accent shadow-lg" 
+                    : "bg-white border border-gray-200 text-gray-400"
+                )}
+              >
+                <span className="text-[7px] font-black opacity-70 leading-none">DẢI</span>
+                <span className="text-sm font-black leading-none">{lane}</span>
               </button>
             ))}
           </div>
         </section>
 
         {/* Numeric Keypad Section */}
-        <section className="bg-[#f3f3f3] p-2 rounded-lg flex flex-col shrink-0">
-          <div className="flex items-center gap-2 mb-1 border-b border-gray-300 pb-1">
-            <Calculator className="text-tactical-green w-4 h-4" />
-            <h3 className="text-[10px] font-bold font-headline uppercase">NHẬP ĐIỂM</h3>
+        <section className="bg-[#f3f3f3] p-1.5 rounded-lg flex flex-col shrink-0">
+          <div className="flex items-center gap-2 mb-1 border-b border-gray-300 pb-0.5">
+            <Calculator className="text-tactical-green w-3.5 h-3.5" />
+            <h3 className="text-[9px] font-bold font-headline uppercase">NHẬP ĐIỂM</h3>
           </div>
-          <div className="grid grid-cols-5 gap-2 min-h-[120px]">
+          <div className="grid grid-cols-5 gap-1.5 min-h-[100px]">
             {numbers.map((num) => (
               <button
                 key={num}
                 onClick={() => handleNumberClick(num)}
                 className={cn(
-                  "bg-white border border-gray-200 rounded-xl font-black text-2xl py-3 active:bg-tactical-green active:text-tactical-accent transition-all active:scale-95 shadow-sm",
+                  "bg-white border border-gray-200 rounded-xl font-black text-xl py-2 active:bg-tactical-green active:text-tactical-accent transition-all active:scale-95 shadow-sm",
                   scores[currentH] === num && "bg-tactical-green text-tactical-accent border-tactical-green shadow-lg",
-                  // Special highlight for 10
                   scores[currentH] === 10 && (num === 1 || num === 0) && "bg-tactical-green/20 border-tactical-green"
                 )}
               >

@@ -102,13 +102,25 @@ export default function CalibrationView() {
     const newScores = [...scores];
     const currentScore = newScores[currentH];
     
+    let nextValue: number;
     // Logic: if current score is 1 and user presses 0, it becomes 10
     if (currentScore === 1 && num === 0) {
-      newScores[currentH] = 10;
+      nextValue = 10;
     } else {
-      newScores[currentH] = num;
+      nextValue = num;
     }
+    
+    newScores[currentH] = nextValue;
     setScores(newScores);
+
+    // Auto-advance logic: jumping to next slot
+    // If nextValue is 0, 2-9, or 10 (anything but 1)
+    if (nextValue !== 1) {
+      if (currentH < 2) {
+        setCurrentH(prev => prev + 1);
+      }
+    }
+    // If nextValue is 1, stay for potential '10' or manual switch
   };
 
   const handleTargetClick = (e: React.MouseEvent<HTMLDivElement>) => {
