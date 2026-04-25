@@ -31,27 +31,41 @@ async function startServer() {
 
     // Check if already cached
     if (fs.existsSync(cachePath)) {
-      console.log(`Serving cached audio: ${hash}.mp3`);
       return res.sendFile(cachePath);
     }
 
-    try {
-      console.log(`Downloading audio for cache: ${ttsUrl}`);
-      const response = await axios({
+    const downloadAudio = async (targetUrl: string) => {
+      return axios({
         method: 'get',
-        url: ttsUrl,
+        url: targetUrl,
         responseType: 'arraybuffer',
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
       });
+    };
+
+    try {
+      let response;
+      try {
+        console.log(`TTS Request: ${ttsUrl}`);
+        response = await downloadAudio(ttsUrl);
+      } catch (e) {
+        // Fallback to gtx client if tw-ob fails
+        const fallbackUrl = ttsUrl.replace('client=tw-ob', 'client=gtx');
+        console.log(`Main TTS client failed, trying fallback: ${fallbackUrl}`);
+        response = await downloadAudio(fallbackUrl);
+      }
       
       fs.writeFileSync(cachePath, response.data);
+      console.log(`TTS Scaled/Cached: ${hash}.mp3 (Size: ${response.data.length})`);
       res.set('Content-Type', 'audio/mpeg');
+      res.set('Content-Length', response.data.length.toString());
+      res.set('Accept-Ranges', 'bytes');
       res.send(response.data);
     } catch (error: any) {
       console.error("Proxy Audio Error:", error.message);
-      res.status(500).send(error.message);
+      res.status(500).send("Error fetching audio: " + error.message);
     }
   });
 

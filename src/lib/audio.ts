@@ -26,17 +26,18 @@ export const playTts = async (phrase: string): Promise<void> => {
   const { sharedAudio: audio } = initAudio();
   if (!audio) return;
 
-  const encodedText = encodeURIComponent(phrase);
-  // Using client=tw-ob for most natural voice
+  // Cleanup phrase to prevent TTS glitches
+  const cleanPhrase = phrase.trim().replace(/\s+/g, ' ');
+  const encodedText = encodeURIComponent(cleanPhrase);
+  
+  // Using client=tw-ob via server proxy is the most reliable way for high quality Vietnamese
+  // We add a timestamp to prevent browser cache of failed requests
   const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodedText}`;
-  const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(ttsUrl)}`;
+  const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(ttsUrl)}&t=${Date.now()}`;
 
   return new Promise((resolve) => {
-    // Priority: Try to use the shared HTMLAudioElement which uses our server-side Google TTS proxy.
-    
-    audio.pause();
-    audio.currentTime = 0;
-    
+    let fallbackTriggered = false;
+
     const onEnded = () => {
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
@@ -44,23 +45,27 @@ export const playTts = async (phrase: string): Promise<void> => {
     };
 
     const onError = (e: any) => {
-      console.warn("Google TTS Proxy failed or blocked, trying fallback:", e);
+      if (fallbackTriggered) return;
+      fallbackTriggered = true;
+      
+      console.warn("Google TTS via Proxy failed/blocked, falling back to Web Speech:", e);
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
       
-      // Fallback: Web Speech API (Browser's built-in voice)
       if (window.speechSynthesis) {
-        const utterance = new SpeechSynthesisUtterance(phrase);
+        window.speechSynthesis.cancel(); // Clear queue
+        const utterance = new SpeechSynthesisUtterance(cleanPhrase);
         utterance.lang = 'vi-VN';
+        utterance.rate = 1.0;
         
-        // Try to find the best Vietnamese voice available on the device
         const voices = window.speechSynthesis.getVoices();
-        const viVoice = voices.find(v => v.lang.includes('vi') || v.name.includes('Vietnamese'));
-        if (viVoice) {
-          utterance.voice = viVoice;
-        }
+        // Priority: Microsoft HoaiMy or any Vietnamese voice that sounds natural
+        // Usually "Google" voices in browser are better
+        const viVoice = voices.find(v => v.lang.includes('vi') && (v.name.includes('Google') || v.name.includes('Natural'))) || 
+                        voices.find(v => v.lang.includes('vi'));
         
-        utterance.rate = 1.1; // Slightly faster as requested
+        if (viVoice) utterance.voice = viVoice;
+        
         utterance.onend = () => resolve();
         utterance.onerror = () => resolve();
         window.speechSynthesis.speak(utterance);
@@ -71,28 +76,27 @@ export const playTts = async (phrase: string): Promise<void> => {
 
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('error', onError);
-    
-    // Set source and try to play
+
+    // Prepare and play
+    audio.pause();
     audio.src = proxyUrl;
     audio.load();
     
     const playPromise = audio.play();
     if (playPromise !== undefined) {
       playPromise.catch(err => {
-        console.warn("HTMLAudio blocked (requires user gesture), using Web Speech API fallback:", err);
-        const utterance = new SpeechSynthesisUtterance(phrase);
-        utterance.lang = 'vi-VN';
-        
-        const voices = window.speechSynthesis.getVoices();
-        const viVoice = voices.find(v => v.lang.includes('vi'));
-        if (viVoice) utterance.voice = viVoice;
-        
-        utterance.rate = 1.1;
-        utterance.onend = () => resolve();
-        utterance.onerror = () => resolve();
-        window.speechSynthesis.speak(utterance);
+        console.warn("Audio element blocked, using Web Speech fallback:", err);
+        onError(err);
       });
     }
+
+    // Safety timeout to prevent getting stuck
+    setTimeout(() => {
+      if (audio.paused && !fallbackTriggered) {
+        // If not playing after 2 seconds, move on or fallback
+        resolve();
+      }
+    }, 5000);
   });
 };
 

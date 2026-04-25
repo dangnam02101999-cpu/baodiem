@@ -96,7 +96,7 @@ export default function ClerkView() {
   }, []);
 
   const sendSignal = async (signal: 'SAFE' | 'DANGER') => {
-    initAudio(); // Unlock audio on user interaction
+    initAudio(); // Unlock audio context & shared audio element
     const path = 'system_status/global';
     try {
       await setDoc(doc(db, 'system_status', 'global'), {
