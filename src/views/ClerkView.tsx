@@ -9,7 +9,7 @@ import { db, handleFirestoreError } from '../firebase';
 import { collection, onSnapshot, query, orderBy, getDocs, writeBatch, doc, deleteDoc, setDoc, addDoc } from 'firebase/firestore';
 import { OperationType } from '../types';
 
-import { playSafeSound, playDangerSound, initAudio } from '../lib/audio';
+import { playSafeSound, playDangerSound, initAudio, playTts } from '../lib/audio';
 
 export default function ClerkView() {
   const lanes = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -147,6 +147,7 @@ export default function ClerkView() {
   const isSpeakingRef = useRef(false);
 
   const handleSpeakNames = async () => {
+    initAudio(); // Priming audio for mobile
     if (isSpeakingRef.current) {
       isSpeakingRef.current = false;
       window.speechSynthesis.cancel();
@@ -177,27 +178,7 @@ export default function ClerkView() {
     try {
       for (const phrase of phrases) {
         if (!isSpeakingRef.current) break;
-
-        const encodedText = encodeURIComponent(phrase);
-        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodedText}`;
-        // Use our server-side proxy to avoid CORS/Load errors
-        const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(ttsUrl)}`;
-        
-        await new Promise((resolve) => {
-          const audio = new Audio();
-          audio.src = proxyUrl;
-          audio.onended = resolve;
-          audio.onerror = (e) => {
-            console.warn("TTS Error for phrase:", phrase, e);
-            resolve(null);
-          };
-          
-          audio.play().catch(err => {
-            console.warn("Play error:", err);
-            resolve(null);
-          });
-        });
-
+        await playTts(phrase);
         await new Promise(r => setTimeout(r, 50));
       }
     } finally {
@@ -207,6 +188,7 @@ export default function ClerkView() {
   };
 
   const handleSpeakResults = async () => {
+    initAudio(); // Priming audio for mobile
     if (isSpeakingRef.current) {
       isSpeakingRef.current = false;
       window.speechSynthesis.cancel();
@@ -244,26 +226,7 @@ export default function ClerkView() {
     try {
       for (const phrase of phrases) {
         if (!isSpeakingRef.current) break;
-
-        const encodedText = encodeURIComponent(phrase);
-        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodedText}`;
-        const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(ttsUrl)}`;
-        
-        await new Promise((resolve) => {
-          const audio = new Audio();
-          audio.src = proxyUrl;
-          audio.onended = resolve;
-          audio.onerror = (e) => {
-            console.warn("TTS Error for phrase:", phrase, e);
-            resolve(null);
-          };
-          
-          audio.play().catch(err => {
-            console.warn("Play error:", err);
-            resolve(null);
-          });
-        });
-
+        await playTts(phrase);
         await new Promise(r => setTimeout(r, 50));
       }
     } finally {

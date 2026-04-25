@@ -1,18 +1,74 @@
 
 let audioCtx: AudioContext | null = null;
+let sharedAudio: HTMLAudioElement | null = null;
 
 export const initAudio = () => {
+  // Initialize AudioContext for beeps
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
   }
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
-  return audioCtx;
+
+  // Initialize shared Audio element for TTS
+  if (!sharedAudio) {
+    sharedAudio = new Audio();
+    // Pre-play a tiny silent sound to "bless" the audio element on the first user gesture
+    sharedAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA== ";
+    sharedAudio.play().catch(() => {});
+  }
+  
+  return { audioCtx, sharedAudio };
+};
+
+export const playTts = async (phrase: string): Promise<void> => {
+  const { sharedAudio: audio } = initAudio();
+  if (!audio) return;
+
+  const encodedText = encodeURIComponent(phrase);
+  // Using client=tw-ob via proxy for best quality and no CORS issues
+  const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodedText}`;
+  const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(ttsUrl)}`;
+
+  return new Promise((resolve) => {
+    audio.pause();
+    audio.src = proxyUrl;
+    
+    const onEnded = () => {
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onError);
+      resolve();
+    };
+
+    const onError = (e: any) => {
+      console.warn("TTS Error for phrase:", phrase, e);
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onError);
+      resolve();
+    };
+
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onError);
+    
+    audio.play().catch(err => {
+      console.warn("Audio play blocked or failed:", err);
+      // Fallback: if audio fails, try Web Speech API
+      try {
+        const utterance = new SpeechSynthesisUtterance(phrase);
+        utterance.lang = 'vi-VN';
+        utterance.onend = () => resolve();
+        utterance.onerror = () => resolve();
+        window.speechSynthesis.speak(utterance);
+      } catch (f) {
+        resolve();
+      }
+    });
+  });
 };
 
 export const playSafeSound = async () => {
-  const ctx = initAudio();
+  const { audioCtx: ctx } = initAudio();
   if (!ctx) return;
   
   if (ctx.state === 'suspended') {
@@ -39,7 +95,7 @@ export const playSafeSound = async () => {
 };
 
 export const playDangerSound = async () => {
-  const ctx = initAudio();
+  const { audioCtx: ctx } = initAudio();
   if (!ctx) return;
 
   if (ctx.state === 'suspended') {
