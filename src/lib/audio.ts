@@ -59,12 +59,22 @@ export const playTts = async (phrase: string): Promise<void> => {
         utterance.rate = 1.0;
         
         const voices = window.speechSynthesis.getVoices();
-        // Priority: Microsoft HoaiMy or any Vietnamese voice that sounds natural
-        // Usually "Google" voices in browser are better
-        const viVoice = voices.find(v => v.lang.includes('vi') && (v.name.includes('Google') || v.name.includes('Natural'))) || 
-                        voices.find(v => v.lang.includes('vi'));
         
-        if (viVoice) utterance.voice = viVoice;
+        // Priority for high-quality "Natural" voices in Edge and Chrome
+        const viVoice = 
+          // 1. Edge Online Natural voices (Best)
+          voices.find(v => v.lang.includes('vi') && v.name.includes('Natural')) ||
+          // 2. Google Online voices
+          voices.find(v => v.lang.includes('vi') && v.name.includes('Google')) ||
+          // 3. Microsoft Online voices
+          voices.find(v => v.lang.includes('vi') && v.name.includes('Online')) ||
+          // 4. Any Vietnamese voice
+          voices.find(v => v.lang.includes('vi'));
+        
+        if (viVoice) {
+          utterance.voice = viVoice;
+          console.log("Using voice:", viVoice.name);
+        }
         
         utterance.onend = () => resolve();
         utterance.onerror = () => resolve();
