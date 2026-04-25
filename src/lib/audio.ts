@@ -32,7 +32,8 @@ export const playTts = async (phrase: string): Promise<void> => {
   const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(ttsUrl)}`;
 
   return new Promise((resolve) => {
-    // Stop any existing playback
+    // Priority: Try to use the shared HTMLAudioElement which uses our server-side Google TTS proxy.
+    
     audio.pause();
     audio.currentTime = 0;
     
@@ -43,14 +44,23 @@ export const playTts = async (phrase: string): Promise<void> => {
     };
 
     const onError = (e: any) => {
-      console.warn("TTS Error for phrase:", phrase, e);
+      console.warn("Google TTS Proxy failed or blocked, trying fallback:", e);
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
       
-      // Only fallback if really necessary
+      // Fallback: Web Speech API (Browser's built-in voice)
       if (window.speechSynthesis) {
         const utterance = new SpeechSynthesisUtterance(phrase);
         utterance.lang = 'vi-VN';
+        
+        // Try to find the best Vietnamese voice available on the device
+        const voices = window.speechSynthesis.getVoices();
+        const viVoice = voices.find(v => v.lang.includes('vi') || v.name.includes('Vietnamese'));
+        if (viVoice) {
+          utterance.voice = viVoice;
+        }
+        
+        utterance.rate = 1.1; // Slightly faster as requested
         utterance.onend = () => resolve();
         utterance.onerror = () => resolve();
         window.speechSynthesis.speak(utterance);
@@ -62,16 +72,22 @@ export const playTts = async (phrase: string): Promise<void> => {
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('error', onError);
     
+    // Set source and try to play
     audio.src = proxyUrl;
-    audio.load(); // Vital for some mobile browsers
+    audio.load();
     
     const playPromise = audio.play();
     if (playPromise !== undefined) {
       playPromise.catch(err => {
-        console.warn("Audio play blocked, trying to restart context", err);
-        // If blocked, last resort is browser speech
+        console.warn("HTMLAudio blocked (requires user gesture), using Web Speech API fallback:", err);
         const utterance = new SpeechSynthesisUtterance(phrase);
         utterance.lang = 'vi-VN';
+        
+        const voices = window.speechSynthesis.getVoices();
+        const viVoice = voices.find(v => v.lang.includes('vi'));
+        if (viVoice) utterance.voice = viVoice;
+        
+        utterance.rate = 1.1;
         utterance.onend = () => resolve();
         utterance.onerror = () => resolve();
         window.speechSynthesis.speak(utterance);
