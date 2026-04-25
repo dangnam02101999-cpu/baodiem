@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
-import { Play, Shield, AlertTriangle, ChevronLeft, ChevronRight, Loader2, Save, FileSpreadsheet, Trash2, FolderOpen, Edit, CheckCircle } from 'lucide-react';
+import { Play, Shield, AlertTriangle, ChevronLeft, ChevronRight, Loader2, Save, FileSpreadsheet, Trash2, FolderOpen, Edit, CheckCircle, Volume2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 import { MOCK_SOLDIERS } from '../constants';
@@ -142,6 +142,134 @@ export default function ClerkView() {
     if (total >= 24) return 'Khá';
     if (total >= 18) return 'Đạt';
     return 'Không đạt';
+  };
+
+  const isSpeakingRef = useRef(false);
+
+  const handleSpeakNames = async () => {
+    if (isSpeakingRef.current) {
+      isSpeakingRef.current = false;
+      window.speechSynthesis.cancel();
+      toast.dismiss();
+      return;
+    }
+
+    const currentRoundNum = currentRound + 1;
+    const phrases: string[] = [`Thông báo danh sách lượt bắn số ${currentRoundNum}.`];
+    
+    let hasSoldiers = false;
+    currentSoldiers.forEach((soldier, index) => {
+      if (soldier) {
+        const lane = lanes[index];
+        const ttsText = `Dải ${lane} ${soldier.name}`;
+        phrases.push(ttsText);
+        hasSoldiers = true;
+      }
+    });
+
+    if (!hasSoldiers) {
+      phrases.push(`Lượt bắn số ${currentRoundNum} hiện chưa có quân nhân đăng ký.`);
+    }
+
+    isSpeakingRef.current = true;
+    const toastId = toast.loading("Đang đọc tên (Google TTS)...");
+
+    try {
+      for (const phrase of phrases) {
+        if (!isSpeakingRef.current) break;
+
+        const encodedText = encodeURIComponent(phrase);
+        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodedText}`;
+        // Use our server-side proxy to avoid CORS/Load errors
+        const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(ttsUrl)}`;
+        
+        await new Promise((resolve) => {
+          const audio = new Audio();
+          audio.src = proxyUrl;
+          audio.onended = resolve;
+          audio.onerror = (e) => {
+            console.warn("TTS Error for phrase:", phrase, e);
+            resolve(null);
+          };
+          
+          audio.play().catch(err => {
+            console.warn("Play error:", err);
+            resolve(null);
+          });
+        });
+
+        await new Promise(r => setTimeout(r, 50));
+      }
+    } finally {
+      isSpeakingRef.current = false;
+      toast.dismiss(toastId);
+    }
+  };
+
+  const handleSpeakResults = async () => {
+    if (isSpeakingRef.current) {
+      isSpeakingRef.current = false;
+      window.speechSynthesis.cancel();
+      toast.dismiss();
+      return;
+    }
+
+    const phrases: string[] = [`Thông báo kết quả bắn.`];
+    
+    let hasResults = false;
+    lanes.forEach((lane) => {
+      const total = getTotalForLane(lane);
+      // We check if there's any result for this lane to avoid reading empty lanes if not needed, 
+      // but usually we announce all active lanes. For now, let's announce any lane that has at least one hit recorded.
+      const hasHits = results.some(r => r.lane === lane);
+      
+      if (hasHits) {
+        const isThreeTargets = 
+          results.some(r => r.lane === lane && r.target === 4) &&
+          results.some(r => r.lane === lane && r.target === 7) &&
+          results.some(r => r.lane === lane && r.target === 8);
+        const classification = getClassification(total, isThreeTargets);
+        phrases.push(`Dải ${lane}. ${total} điểm. ${classification}.`);
+        hasResults = true;
+      }
+    });
+
+    if (!hasResults) {
+      phrases.push("Lượt bắn này hiện chưa có kết quả.");
+    }
+
+    isSpeakingRef.current = true;
+    const toastId = toast.loading("Đang đọc kết quả (Google TTS)...");
+
+    try {
+      for (const phrase of phrases) {
+        if (!isSpeakingRef.current) break;
+
+        const encodedText = encodeURIComponent(phrase);
+        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodedText}`;
+        const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(ttsUrl)}`;
+        
+        await new Promise((resolve) => {
+          const audio = new Audio();
+          audio.src = proxyUrl;
+          audio.onended = resolve;
+          audio.onerror = (e) => {
+            console.warn("TTS Error for phrase:", phrase, e);
+            resolve(null);
+          };
+          
+          audio.play().catch(err => {
+            console.warn("Play error:", err);
+            resolve(null);
+          });
+        });
+
+        await new Promise(r => setTimeout(r, 50));
+      }
+    } finally {
+      isSpeakingRef.current = false;
+      toast.dismiss(toastId);
+    }
   };
 
   const handleSaveRound = async () => {
@@ -389,6 +517,14 @@ export default function ClerkView() {
               XUẤT EXCEL
             </button>
             <button 
+              onClick={handleSpeakResults}
+              className="flex-1 sm:flex-none px-3 py-2 bg-white border border-tactical-blue text-tactical-blue rounded-lg font-headline font-bold text-[9px] flex items-center justify-center gap-2 hover:bg-tactical-blue hover:text-white transition-all shadow-sm"
+              title="Đọc kết quả lượt này"
+            >
+              <Volume2 className="w-3 h-3" />
+              ĐỌC KẾT QUẢ
+            </button>
+            <button 
               onClick={handleSaveRound}
               disabled={isSaving}
               className="flex-1 sm:flex-none px-4 py-2 bg-gradient-to-r from-tactical-green to-tactical-green-light text-tactical-accent rounded-lg font-headline font-bold text-[10px] flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50"
@@ -471,6 +607,14 @@ export default function ClerkView() {
             <h3 className="font-headline font-black text-xs sm:text-sm tracking-widest text-tactical-green uppercase">
               Danh sách gọi tên - Lượt {currentRound + 1}
             </h3>
+            <button 
+              onClick={handleSpeakNames}
+              className="p-1.5 bg-tactical-green text-tactical-accent rounded-lg flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all shadow-sm"
+              title="Đọc tên quân nhân lượt này"
+            >
+              <Volume2 className="w-4 h-4" />
+              <span className="hidden sm:inline font-headline text-[10px] font-bold">ĐỌC TÊN</span>
+            </button>
             <div className="flex gap-1">
               <button 
                 disabled={currentRound === 0}
