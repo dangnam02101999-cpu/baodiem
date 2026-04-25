@@ -27,13 +27,14 @@ export const playTts = async (phrase: string): Promise<void> => {
   if (!audio) return;
 
   const encodedText = encodeURIComponent(phrase);
-  // Using client=tw-ob via proxy for best quality and no CORS issues
+  // Using client=tw-ob for most natural voice
   const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodedText}`;
   const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(ttsUrl)}`;
 
   return new Promise((resolve) => {
+    // Stop any existing playback
     audio.pause();
-    audio.src = proxyUrl;
+    audio.currentTime = 0;
     
     const onEnded = () => {
       audio.removeEventListener('ended', onEnded);
@@ -45,25 +46,37 @@ export const playTts = async (phrase: string): Promise<void> => {
       console.warn("TTS Error for phrase:", phrase, e);
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
-      resolve();
-    };
-
-    audio.addEventListener('ended', onEnded);
-    audio.addEventListener('error', onError);
-    
-    audio.play().catch(err => {
-      console.warn("Audio play blocked or failed:", err);
-      // Fallback: if audio fails, try Web Speech API
-      try {
+      
+      // Only fallback if really necessary
+      if (window.speechSynthesis) {
         const utterance = new SpeechSynthesisUtterance(phrase);
         utterance.lang = 'vi-VN';
         utterance.onend = () => resolve();
         utterance.onerror = () => resolve();
         window.speechSynthesis.speak(utterance);
-      } catch (f) {
+      } else {
         resolve();
       }
-    });
+    };
+
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onError);
+    
+    audio.src = proxyUrl;
+    audio.load(); // Vital for some mobile browsers
+    
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(err => {
+        console.warn("Audio play blocked, trying to restart context", err);
+        // If blocked, last resort is browser speech
+        const utterance = new SpeechSynthesisUtterance(phrase);
+        utterance.lang = 'vi-VN';
+        utterance.onend = () => resolve();
+        utterance.onerror = () => resolve();
+        window.speechSynthesis.speak(utterance);
+      });
+    }
   });
 };
 
