@@ -29,13 +29,20 @@ async function startServer() {
     const hash = crypto.createHash('md5').update(ttsUrl).digest('hex');
     const cachePath = path.join(CACHE_DIR, `${hash}.mp3`);
 
-    // Check if already cached
+    // Check if already cached and valid
     if (fs.existsSync(cachePath)) {
-      return res.sendFile(cachePath);
+      const stats = fs.statSync(cachePath);
+      // If file is too small (likely a captured error page/HTML instead of MP3), delete it to retry
+      if (stats.size > 200) {
+        return res.sendFile(cachePath);
+      } else {
+        console.log(`Deleting invalid cache file: ${hash}.mp3 (Size: ${stats.size})`);
+        fs.unlinkSync(cachePath);
+      }
     }
 
     const downloadAudio = async (targetUrl: string) => {
-      return axios({
+      const response = await axios({
         method: 'get',
         url: targetUrl,
         responseType: 'arraybuffer',
@@ -43,6 +50,18 @@ async function startServer() {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
       });
+      
+      // Verify it's actually audio
+      const contentType = response.headers['content-type']?.toString();
+      if (!contentType || !contentType.includes('audio')) {
+        throw new Error(`Invalid content type: ${contentType}`);
+      }
+      
+      if (response.data.length < 200) {
+        throw new Error(`Audio data too short: ${response.data.length} bytes`);
+      }
+      
+      return response;
     };
 
     try {
@@ -50,15 +69,16 @@ async function startServer() {
       try {
         console.log(`TTS Request: ${ttsUrl}`);
         response = await downloadAudio(ttsUrl);
-      } catch (e) {
+      } catch (e: any) {
         // Fallback to gtx client if tw-ob fails
         const fallbackUrl = ttsUrl.replace('client=tw-ob', 'client=gtx');
-        console.log(`Main TTS client failed, trying fallback: ${fallbackUrl}`);
+        console.log(`Main TTS client failed (${e.message}), trying fallback: ${fallbackUrl}`);
         response = await downloadAudio(fallbackUrl);
       }
       
       fs.writeFileSync(cachePath, response.data);
-      console.log(`TTS Scaled/Cached: ${hash}.mp3 (Size: ${response.data.length})`);
+      console.log(`TTS Cached: ${hash}.mp3 (Size: ${response.data.length})`);
+      
       res.set('Content-Type', 'audio/mpeg');
       res.set('Content-Length', response.data.length.toString());
       res.set('Accept-Ranges', 'bytes');
