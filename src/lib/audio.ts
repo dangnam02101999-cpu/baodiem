@@ -1,4 +1,3 @@
-
 let audioCtx: AudioContext | null = null;
 let sharedAudio: HTMLAudioElement | null = null;
 
@@ -30,10 +29,12 @@ export const playTts = async (phrase: string): Promise<void> => {
   const cleanPhrase = phrase.trim().replace(/\s+/g, ' ');
   const encodedText = encodeURIComponent(cleanPhrase);
   
-  // Using client=tw-ob via server proxy is the most reliable way for high quality Vietnamese
-  // We add a timestamp to prevent browser cache of failed requests
-  const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodedText}`;
-  const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(ttsUrl)}&t=${Date.now()}`;
+  /**
+   * SỬA LỖI TẠI ĐÂY:
+   * Thay vì gửi link translate.google.com cũ, chúng ta gửi trực tiếp nội dung văn bản
+   * lên API của server.ts để sử dụng giọng Neural2 chuẩn AI Studio.
+   */
+  const proxyUrl = `/api/proxy-audio?text=${encodedText}&t=${Date.now()}`;
 
   return new Promise((resolve) => {
     let fallbackTriggered = false;
@@ -48,7 +49,7 @@ export const playTts = async (phrase: string): Promise<void> => {
       if (fallbackTriggered) return;
       fallbackTriggered = true;
       
-      console.warn("Google TTS via Proxy failed/blocked, falling back to Web Speech:", e);
+      console.warn("Professional TTS via Server failed, falling back to Web Speech:", e);
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
       
@@ -62,18 +63,14 @@ export const playTts = async (phrase: string): Promise<void> => {
         
         // Priority for high-quality "Natural" voices in Edge and Chrome
         const viVoice = 
-          // 1. Edge Online Natural voices (Best)
           voices.find(v => v.lang.includes('vi') && v.name.includes('Natural')) ||
-          // 2. Google Online voices
           voices.find(v => v.lang.includes('vi') && v.name.includes('Google')) ||
-          // 3. Microsoft Online voices
           voices.find(v => v.lang.includes('vi') && v.name.includes('Online')) ||
-          // 4. Any Vietnamese voice
           voices.find(v => v.lang.includes('vi'));
         
         if (viVoice) {
           utterance.voice = viVoice;
-          console.log("Using voice:", viVoice.name);
+          console.log("Using browser voice fallback:", viVoice.name);
         }
         
         utterance.onend = () => resolve();
@@ -89,7 +86,7 @@ export const playTts = async (phrase: string): Promise<void> => {
 
     // Prepare and play
     audio.pause();
-    audio.src = proxyUrl;
+    audio.src = proxyUrl; // Gọi đến API mới trên Vercel của bạn
     audio.load();
     
     const playPromise = audio.play();
@@ -103,7 +100,6 @@ export const playTts = async (phrase: string): Promise<void> => {
     // Safety timeout to prevent getting stuck
     setTimeout(() => {
       if (audio.paused && !fallbackTriggered) {
-        // If not playing after 2 seconds, move on or fallback
         resolve();
       }
     }, 5000);
