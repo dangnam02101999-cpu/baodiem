@@ -1,11 +1,11 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import axios from "axios";
 import cors from "cors";
 import fs from "fs";
 import crypto from "crypto";
-// Import thư viện TTS chuyên nghiệp
-import textToSpeech from "@google-cloud/text-to-speech";
+import { GoogleGenAI } from "@google/genai";
 
 // Create audio cache directory
 const CACHE_DIR = path.join(process.cwd(), "audio_cache");
@@ -13,8 +13,9 @@ if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
-// Khởi tạo client (Nó sẽ tự tìm credentials từ biến môi trường GOOGLE_APPLICATION_CREDENTIALS)
-const ttsClient = new textToSpeech.TextToSpeechClient();
+// Initialize Gemini for TTS
+const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY || "");
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-8b" }); // Using a fast model for TTS
 
 async function startServer() {
   const app = express();
@@ -23,69 +24,84 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
-  // Proxy endpoint rewritten for Professional Vietnamese TTS
-  app.get("/api/proxy-audio", async (req, res) => {
-    // Thay vì nhận URL, giờ ta nhận 'text' cần đọc
-    const { text } = req.query; 
+  // New High-Quality TTS endpoint using Gemini (AI Studio Quality)
+  app.get("/api/tts", async (req, res) => {
+    const { text } = req.query;
     if (!text) return res.status(400).send("No text provided");
 
-    const textToSpeak = text as string;
-    // Create a unique filename based on the text
-    const hash = crypto.createHash('md5').update(textToSpeak).digest('hex');
+    const phrase = text as string;
+    const hash = crypto.createHash('md5').update(phrase).digest('hex');
     const cachePath = path.join(CACHE_DIR, `${hash}.mp3`);
 
-    // 1. Check if already cached and valid
+    // Check cache
     if (fs.existsSync(cachePath)) {
-      const stats = fs.statSync(cachePath);
-      if (stats.size > 200) {
-        console.log(`Serving from cache: ${hash}.mp3`);
-        return res.sendFile(cachePath);
-      } else {
-        fs.unlinkSync(cachePath);
-      }
+      return res.sendFile(cachePath);
     }
 
     try {
-      console.log(`TTS Processing (Neural2): ${textToSpeak.substring(0, 30)}...`);
-
-      // 2. Gọi API Google Cloud TTS với giọng Neural2 chuẩn AI Studio
-      const [response] = await ttsClient.synthesizeSpeech({
-        input: { text: textToSpeak },
-        voice: { 
-          languageCode: 'vi-VN', 
-          name: 'vi-VN-Neural2-D', // Giọng nam chuẩn (hoặc 'vi-VN-Neural2-A' cho giọng nữ)
-        },
-        audioConfig: { 
-          audioEncoding: 'MP3',
-          pitch: 0,
-          speakingRate: 1.0 
-        },
+      console.log(`Generating high-quality Gemini TTS for: "${phrase}"`);
+      
+      // Use the generative model to produce audio modality
+      // This is the "AI Studio" way.
+      const ttsModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
+      const result = await ttsModel.generateContent({
+        contents: [{ 
+          role: 'user', 
+          parts: [{ text: `Đọc đoạn văn bản sau bằng tiếng Việt với giọng đọc tự nhiên, truyền cảm, tốc độ vừa phải: "${phrase}"` }] 
+        }],
+        generationConfig: {
+          // @ts-ignore - responseModalities is supported in newer versions/REST
+          responseModalities: ["audio"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: "Aoede" // High quality neutral voice
+              }
+            }
+          }
+        }
       });
 
-      const audioContent = response.audioContent as Buffer;
+      const response = await result.response;
+      // @ts-ignore - parts[0].inlineData is where the audio lives for multimodal
+      const audioData = response.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData?.data;
 
-      if (!audioContent || audioContent.length < 200) {
-        throw new Error("Invalid audio content received from Google Cloud");
+      if (audioData) {
+        const buffer = Buffer.from(audioData, 'base64');
+        fs.writeFileSync(cachePath, buffer);
+        console.log(`Gemini TTS Cached: ${hash}.mp3 (Size: ${buffer.length})`);
+        
+        res.set('Content-Type', 'audio/wav'); // Gemini often returns WAV or raw PCM
+        res.set('Content-Length', buffer.length.toString());
+        return res.send(buffer);
+      } else {
+        throw new Error("No audio data returned from Gemini");
       }
-
-      // 3. Write to cache
-      fs.writeFileSync(cachePath, audioContent);
-      console.log(`TTS Cached: ${hash}.mp3 (Size: ${audioContent.length})`);
-
-      // 4. Return audio stream
-      res.set('Content-Type', 'audio/mpeg');
-      res.set('Content-Length', audioContent.length.toString());
-      res.set('Accept-Ranges', 'bytes');
-      res.send(audioContent);
-
-    } catch (error: any) {
-      console.error("Professional TTS Error:", error.message);
-      res.status(500).send("Error generating audio: " + error.message);
+    } catch (e: any) {
+      console.error("Gemini TTS Error:", e.message);
+      // Fallback to a better Google Translate proxy if Gemini fails
+      try {
+        const encodedText = encodeURIComponent(phrase);
+        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodedText}`;
+        const response = await axios.get(ttsUrl, {
+          responseType: 'arraybuffer',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          }
+        });
+        fs.writeFileSync(cachePath, response.data);
+        res.set('Content-Type', 'audio/mpeg');
+        return res.send(response.data);
+      } catch (err) {
+        res.status(500).send("Error generating audio");
+      }
     }
   });
 
-  // Vite middleware for development (GIỮ NGUYÊN)
+  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

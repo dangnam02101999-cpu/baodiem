@@ -1,40 +1,78 @@
+
+import { GoogleGenAI, Modality } from "@google/genai";
+
 let audioCtx: AudioContext | null = null;
 let sharedAudio: HTMLAudioElement | null = null;
+let ai: any = null;
 
 export const initAudio = () => {
-  // Initialize AudioContext for beeps
+  // Initialize AudioContext for beeps and raw PCM playback
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({
+      sampleRate: 24000
+    });
   }
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
 
-  // Initialize shared Audio element for TTS
+  // Initialize shared Audio element for HTML-based TTS fallbacks
   if (!sharedAudio) {
     sharedAudio = new Audio();
     // Pre-play a tiny silent sound to "bless" the audio element on the first user gesture
     sharedAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA== ";
     sharedAudio.play().catch(() => {});
   }
+
+  // Initialize Gemini AI
+  if (!ai && process.env.GEMINI_API_KEY) {
+    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
   
-  return { audioCtx, sharedAudio };
+  return { audioCtx, sharedAudio, ai };
+};
+
+const playPcm = async (base64Data: string): Promise<void> => {
+  const { audioCtx: ctx } = initAudio();
+  if (!ctx) return;
+
+  // Convert base64 to ArrayBuffer
+  const binaryString = window.atob(base64Data);
+  const len = binaryString.length;
+  const bytes = new Int16Array(len / 2);
+  for (let i = 0; i < len; i += 2) {
+    bytes[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i);
+  }
+
+  // Convert Int16 PCM to Float32
+  const float32Data = new Float32Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) {
+    float32Data[i] = bytes[i] / 32768.0;
+  }
+
+  // Create AudioBuffer
+  const audioBuffer = ctx.createBuffer(1, float32Data.length, 24000);
+  audioBuffer.getChannelData(0).set(float32Data);
+
+  // Play
+  return new Promise((resolve) => {
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(ctx.destination);
+    source.onended = () => resolve();
+    source.start();
+  });
 };
 
 export const playTts = async (phrase: string): Promise<void> => {
   const { sharedAudio: audio } = initAudio();
   if (!audio) return;
 
-  // Cleanup phrase to prevent TTS glitches
   const cleanPhrase = phrase.trim().replace(/\s+/g, ' ');
   const encodedText = encodeURIComponent(cleanPhrase);
   
-  /**
-   * SỬA LỖI TẠI ĐÂY:
-   * Thay vì gửi link translate.google.com cũ, chúng ta gửi trực tiếp nội dung văn bản
-   * lên API của server.ts để sử dụng giọng Neural2 chuẩn AI Studio.
-   */
-  const proxyUrl = `/api/proxy-audio?text=${encodedText}&t=${Date.now()}`;
+  // Use our new high-quality server-side Gemini TTS endpoint
+  const proxyUrl = `/api/tts?text=${encodedText}&t=${Date.now()}`;
 
   return new Promise((resolve) => {
     let fallbackTriggered = false;
@@ -45,34 +83,28 @@ export const playTts = async (phrase: string): Promise<void> => {
       resolve();
     };
 
-    const onError = (e: any) => {
+    const onError = async (e: any) => {
       if (fallbackTriggered) return;
       fallbackTriggered = true;
       
-      console.warn("Professional TTS via Server failed, falling back to Web Speech:", e);
+      console.warn("Server-side Gemini TTS failed, falling back to Web Speech:", e);
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
       
       if (window.speechSynthesis) {
-        window.speechSynthesis.cancel(); // Clear queue
+        window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(cleanPhrase);
         utterance.lang = 'vi-VN';
         utterance.rate = 1.0;
         
         const voices = window.speechSynthesis.getVoices();
-        
-        // Priority for high-quality "Natural" voices in Edge and Chrome
         const viVoice = 
           voices.find(v => v.lang.includes('vi') && v.name.includes('Natural')) ||
           voices.find(v => v.lang.includes('vi') && v.name.includes('Google')) ||
           voices.find(v => v.lang.includes('vi') && v.name.includes('Online')) ||
           voices.find(v => v.lang.includes('vi'));
         
-        if (viVoice) {
-          utterance.voice = viVoice;
-          console.log("Using browser voice fallback:", viVoice.name);
-        }
-        
+        if (viVoice) utterance.voice = viVoice;
         utterance.onend = () => resolve();
         utterance.onerror = () => resolve();
         window.speechSynthesis.speak(utterance);
@@ -84,9 +116,8 @@ export const playTts = async (phrase: string): Promise<void> => {
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('error', onError);
 
-    // Prepare and play
     audio.pause();
-    audio.src = proxyUrl; // Gọi đến API mới trên Vercel của bạn
+    audio.src = proxyUrl;
     audio.load();
     
     const playPromise = audio.play();
@@ -97,12 +128,11 @@ export const playTts = async (phrase: string): Promise<void> => {
       });
     }
 
-    // Safety timeout to prevent getting stuck
     setTimeout(() => {
       if (audio.paused && !fallbackTriggered) {
         resolve();
       }
-    }, 5000);
+    }, 8000);
   });
 };
 
