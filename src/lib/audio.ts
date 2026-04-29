@@ -31,31 +31,25 @@ export const playTts = async (phrase: string): Promise<void> => {
   const cleanPhrase = phrase.trim().replace(/\s+/g, ' ');
 
   try {
-    const response = await fetch("/api/fpt-tts", {
+    const response = await fetch("https://api.fpt.ai/hmi/tts/v5", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "api_key": "TulFRBOQWl1iolT0OHMk5Sr2Rewl1hyF",
+        "voice": "banmai",
+        "speed": "0"
       },
-      body: JSON.stringify({ phrase: cleanPhrase })
+      body: cleanPhrase
     });
 
     if (!response.ok) {
-      throw new Error(`Server Error: ${response.status}`);
+      throw new Error(`FPT Error: ${response.status}`);
     }
 
     const result = await response.json();
 
-    if (result.error === 0) {
-      // Use result.url as specified in user logic
-      // Fallback to async if url is missing (common in FPT v5)
+    if (result.url || result.async) {
       const audioUrl = result.url || result.async;
-      
-      if (!audioUrl) {
-        console.error("FPT API didn't return a URL:", result);
-        return;
-      }
-
-      console.log("Playing FPT Audio:", audioUrl);
+      console.log("Playing FPT Audio (Direct):", audioUrl);
 
       return new Promise((resolve) => {
         const tempAudio = new Audio(audioUrl);
@@ -67,7 +61,7 @@ export const playTts = async (phrase: string): Promise<void> => {
         };
 
         tempAudio.play().catch(err => {
-          console.warn("FPT play was blocked by browser, click interaction might be needed:", err);
+          console.warn("FPT play was blocked by browser:", err);
           resolve();
         });
 
@@ -78,7 +72,7 @@ export const playTts = async (phrase: string): Promise<void> => {
       console.error("Lỗi từ FPT.AI:", result.message);
     }
   } catch (error) {
-    console.error("Lỗi kết nối FPT:", error);
+    console.error("Lỗi gọi thẳng FPT:", error);
   }
 };
 
