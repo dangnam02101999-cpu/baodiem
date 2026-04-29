@@ -30,11 +30,11 @@ export const playTts = async (phrase: string): Promise<void> => {
 
   const cleanPhrase = phrase.trim().replace(/\s+/g, ' ');
 
-  // 1. Exclusively use FPT.AI TTS (Neural Vietnamese Voice)
+  // Exclusively use FPT.AI TTS via Server Proxy (to handle CORS and API Key securely)
   try {
-    const fptResponse = await fetch(`/api/fpt-tts?text=${encodeURIComponent(cleanPhrase)}`);
-    if (fptResponse.ok) {
-      const audioBlob = await fptResponse.blob();
+    const response = await fetch(`/api/fpt-tts?text=${encodeURIComponent(cleanPhrase)}`);
+    if (response.ok) {
+      const audioBlob = await response.blob();
       const audioUrl = URL.createObjectURL(audioBlob);
       
       return new Promise((resolve) => {
@@ -54,7 +54,7 @@ export const playTts = async (phrase: string): Promise<void> => {
         });
       });
     } else {
-      const errorText = await fptResponse.text();
+      const errorText = await response.text();
       console.warn("FPT TTS Proxy returned error:", errorText);
     }
   } catch (err) {

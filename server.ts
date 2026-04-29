@@ -37,7 +37,7 @@ async function startServer() {
     
     try {
       console.log(`Requesting FPT TTS for: ${phrase.substring(0, 30)}...`);
-      // 1. Request TTS - Using the pattern suggested by user
+      // Use the exact header/body structure suggested by documentation and user
       const fptResponse = await axios({
         method: 'post',
         url: 'https://api.fpt.ai/hmi/tts/v5',
@@ -45,7 +45,8 @@ async function startServer() {
         headers: {
           'api_key': apiKey,
           'voice': 'banmai',
-          'speed': '0'
+          'speed': '0',
+          'Content-Type': 'text/plain'
         }
       });
 
