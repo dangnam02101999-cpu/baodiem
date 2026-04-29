@@ -1,78 +1,105 @@
 
-import { GoogleGenAI, Modality } from "@google/genai";
+import { generateGeminiSpeech } from '../services/geminiTts';
 
 let audioCtx: AudioContext | null = null;
 let sharedAudio: HTMLAudioElement | null = null;
-let ai: any = null;
 
 export const initAudio = () => {
-  // Initialize AudioContext for beeps and raw PCM playback
+  // Initialize AudioContext for beeps and Gemini PCM playback
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({
-      sampleRate: 24000
+      sampleRate: 24000 // Match Gemini TTS sample rate
     });
   }
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
 
-  // Initialize shared Audio element for HTML-based TTS fallbacks
+  // Initialize shared Audio element for Proxy/WebSpeech fallback
   if (!sharedAudio) {
     sharedAudio = new Audio();
-    // Pre-play a tiny silent sound to "bless" the audio element on the first user gesture
+    // Pre-play silent gap to unlock
     sharedAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA== ";
     sharedAudio.play().catch(() => {});
   }
-
-  // Initialize Gemini AI
-  if (!ai && process.env.GEMINI_API_KEY) {
-    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  }
   
-  return { audioCtx, sharedAudio, ai };
+  return { audioCtx, sharedAudio };
 };
 
-const playPcm = async (base64Data: string): Promise<void> => {
-  const { audioCtx: ctx } = initAudio();
-  if (!ctx) return;
-
-  // Convert base64 to ArrayBuffer
-  const binaryString = window.atob(base64Data);
-  const len = binaryString.length;
-  const bytes = new Int16Array(len / 2);
-  for (let i = 0; i < len; i += 2) {
-    bytes[i / 2] = (binaryString.charCodeAt(i + 1) << 8) | binaryString.charCodeAt(i);
+/**
+ * Plays a PCM ArrayBuffer using Web Audio API.
+ * Specifically designed for Gemini TTS output.
+ */
+async function playPcmData(buffer: ArrayBuffer, ctx: AudioContext): Promise<void> {
+  // PCM data from Gemini is 16-bit Int, mono, 24kHz
+  const int16 = new Int16Array(buffer);
+  const float32 = new Float32Array(int16.length);
+  
+  for (let i = 0; i < int16.length; i++) {
+    float32[i] = int16[i] / 32768.0;
   }
 
-  // Convert Int16 PCM to Float32
-  const float32Data = new Float32Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) {
-    float32Data[i] = bytes[i] / 32768.0;
-  }
+  const audioBuffer = ctx.createBuffer(1, float32.length, 24000);
+  audioBuffer.getChannelData(0).set(float32);
 
-  // Create AudioBuffer
-  const audioBuffer = ctx.createBuffer(1, float32Data.length, 24000);
-  audioBuffer.getChannelData(0).set(float32Data);
-
-  // Play
+  const source = ctx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(ctx.destination);
+  
   return new Promise((resolve) => {
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(ctx.destination);
     source.onended = () => resolve();
     source.start();
   });
-};
+}
 
 export const playTts = async (phrase: string): Promise<void> => {
-  const { sharedAudio: audio } = initAudio();
-  if (!audio) return;
+  const { audioCtx, sharedAudio: audio } = initAudio();
+  if (!audioCtx || !audio) return;
 
   const cleanPhrase = phrase.trim().replace(/\s+/g, ' ');
+
+  // 1. Try Gemini TTS (High Quality "AI Studio" Voice)
+  try {
+    const pcmData = await generateGeminiSpeech(cleanPhrase);
+    if (pcmData) {
+      await playPcmData(pcmData, audioCtx);
+      return; // Success!
+    }
+  } catch (err) {
+    console.warn("Gemini TTS failed, trying FPT next...", err);
+  }
+
+  // 2. Try FPT.AI TTS (Neural Vietnamese Voice)
+  try {
+    const fptResponse = await fetch(`/api/fpt-tts?text=${encodeURIComponent(cleanPhrase)}`);
+    if (fptResponse.ok) {
+      const audioBlob = await fptResponse.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      return new Promise((resolve) => {
+        const tempAudio = new Audio(audioUrl);
+        tempAudio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          resolve();
+        };
+        tempAudio.onerror = () => {
+          URL.revokeObjectURL(audioUrl);
+          resolve();
+        };
+        tempAudio.play().catch(e => {
+          console.warn("FPT play failed:", e);
+          resolve();
+        });
+      });
+    }
+  } catch (err) {
+    console.warn("FPT TTS failed, trying Google fallback...", err);
+  }
+
+  // 3. Fallback to Google Translate Proxy (Legacy)
   const encodedText = encodeURIComponent(cleanPhrase);
-  
-  // Use our new high-quality server-side Gemini TTS endpoint
-  const proxyUrl = `/api/tts?text=${encodedText}&t=${Date.now()}`;
+  const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodedText}`;
+  const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(ttsUrl)}&t=${Date.now()}`;
 
   return new Promise((resolve) => {
     let fallbackTriggered = false;
@@ -83,11 +110,11 @@ export const playTts = async (phrase: string): Promise<void> => {
       resolve();
     };
 
-    const onError = async (e: any) => {
+    const onError = (e: any) => {
       if (fallbackTriggered) return;
       fallbackTriggered = true;
       
-      console.warn("Server-side Gemini TTS failed, falling back to Web Speech:", e);
+      console.warn("Google TTS Proxy fallback failed, trying Web Speech API:", e);
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
       
@@ -98,13 +125,11 @@ export const playTts = async (phrase: string): Promise<void> => {
         utterance.rate = 1.0;
         
         const voices = window.speechSynthesis.getVoices();
-        const viVoice = 
-          voices.find(v => v.lang.includes('vi') && v.name.includes('Natural')) ||
-          voices.find(v => v.lang.includes('vi') && v.name.includes('Google')) ||
-          voices.find(v => v.lang.includes('vi') && v.name.includes('Online')) ||
-          voices.find(v => v.lang.includes('vi'));
+        const viVoice = voices.find(v => v.lang.includes('vi') && (v.name.includes('Google') || v.name.includes('Natural'))) || 
+                        voices.find(v => v.lang.includes('vi'));
         
         if (viVoice) utterance.voice = viVoice;
+        
         utterance.onend = () => resolve();
         utterance.onerror = () => resolve();
         window.speechSynthesis.speak(utterance);
@@ -132,7 +157,7 @@ export const playTts = async (phrase: string): Promise<void> => {
       if (audio.paused && !fallbackTriggered) {
         resolve();
       }
-    }, 8000);
+    }, 5000);
   });
 };
 
