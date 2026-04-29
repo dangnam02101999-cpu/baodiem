@@ -49,24 +49,38 @@ export const playTts = async (phrase: string): Promise<void> => {
 
     if (result.url || result.async) {
       const audioUrl = result.url || result.async;
-      console.log("Playing FPT Audio (Direct):", audioUrl);
+      console.log("Playing FPT Audio (Shared):", audioUrl);
 
       return new Promise((resolve) => {
-        const tempAudio = new Audio(audioUrl);
+        // Use 'audio' (sharedAudio) which was unlocked during init
+        audio.src = audioUrl;
         
-        tempAudio.onended = () => resolve();
-        tempAudio.onerror = (e) => {
-          console.error("FPT Audio Playback Error:", e);
+        audio.onended = () => {
+          cleanup();
           resolve();
         };
 
-        tempAudio.play().catch(err => {
+        audio.onerror = (e) => {
+          console.error("FPT Audio Playback Error:", e);
+          cleanup();
+          resolve();
+        };
+
+        const cleanup = () => {
+          audio.onended = null;
+          audio.onerror = null;
+        };
+
+        audio.play().catch(err => {
           console.warn("FPT play was blocked by browser:", err);
           resolve();
         });
 
         // Fail-safe timeout
-        setTimeout(resolve, 20000);
+        setTimeout(() => {
+          cleanup();
+          resolve();
+        }, 20000);
       });
     } else {
       console.error("Lỗi từ FPT.AI:", result.message);

@@ -132,7 +132,7 @@ export default function TargetReporterView() {
       
       await addDoc(collection(db, path), resultData);
       
-      alert(`Đã gửi kết quả Dải ${selectedLane} - Bia ${selectedTarget}: ${scores.join('/')}`);
+      // Results saved successfully
       
       // Reset for next
       setScores([null, null, null]);

@@ -309,7 +309,7 @@ export default function ClerkView() {
       });
       await batch.commit();
       
-      toast.success(`Đã lưu kết quả lượt ${currentRound + 1}. Sẵn sàng cho lượt tiếp theo.`);
+      // toast.success(`Đã lưu kết quả lượt ${currentRound + 1}. Sẵn sàng cho lượt tiếp theo.`);
       
       // Auto-advance to next round
       setCurrentRound(prev => prev + 1);
@@ -389,7 +389,7 @@ export default function ClerkView() {
       setSessionName('');
       setShowSaveModal(false);
       setCurrentRound(0);
-      alert('Đã lưu phiên bắn vào lịch sử và đặt lại hệ thống!');
+      // alert('Đã lưu phiên bắn vào lịch sử và đặt lại hệ thống!');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'final_save_operation');
     } finally {

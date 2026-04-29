@@ -172,7 +172,7 @@ export default function CalibrationView() {
       // Use lane as document ID for easy lookup
       await setDoc(doc(db, 'calibration_results', selectedLane.toString()), calibrationData);
 
-      alert(`Đã gửi kết quả hiệu chỉnh Dải ${selectedLane} thành công!`);
+      // alert(`Đã gửi kết quả hiệu chỉnh Dải ${selectedLane} thành công!`);
       setScores([null, null, null]);
       setHitCoords([null, null, null]);
       setCurrentH(0);
