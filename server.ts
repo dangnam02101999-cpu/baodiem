@@ -5,6 +5,7 @@ import axios from "axios";
 import cors from "cors";
 import fs from "fs";
 import crypto from "crypto";
+import { GoogleGenAI, Modality } from "@google/genai";
 
 // Create audio cache directory
 const CACHE_DIR = path.join(process.cwd(), "audio_cache");
@@ -18,6 +19,68 @@ async function startServer() {
 
   app.use(cors());
   app.use(express.json());
+
+  const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+
+  // Gemini TTS endpoint with Caching
+  app.get("/api/gemini-tts", async (req, res) => {
+    const { text } = req.query;
+    if (!text) return res.status(400).send("No text provided");
+
+    const phrase = text as string;
+    const hash = crypto.createHash('md5').update(`gemini-${phrase}`).digest('hex');
+    const cachePath = path.join(CACHE_DIR, `${hash}.pcm`);
+
+    if (fs.existsSync(cachePath)) {
+      console.log(`Serving cached Gemini TTS: ${hash}.pcm`);
+      res.set('Content-Type', 'application/octet-stream');
+      return res.sendFile(cachePath);
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).send("GEMINI_API_KEY is missing on server");
+    }
+
+    try {
+      console.log(`Generating new Gemini TTS for: ${phrase.substring(0, 30)}...`);
+      
+      const result = await genAI.models.generateContent({
+        model: "gemini-3.1-flash-tts-preview",
+        contents: [{ 
+          parts: [{ 
+            text: `Hãy đọc đoạn văn sau bằng tiếng Việt với giọng đọc tự nhiên, chuẩn xác, phát âm rõ ràng: "${phrase}"` 
+          }] 
+        }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Kore' },
+            },
+          },
+        },
+      });
+
+      const base64Audio = result.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+      
+      if (!base64Audio) {
+        throw new Error("No audio data returned from Gemini");
+      }
+
+      const audioBuffer = Buffer.from(base64Audio, 'base64');
+      fs.writeFileSync(cachePath, audioBuffer);
+      
+      res.set('Content-Type', 'application/octet-stream');
+      res.set('Content-Length', audioBuffer.length.toString());
+      res.send(audioBuffer);
+    } catch (error: any) {
+      console.error("Gemini TTS Server Error:", error.message);
+      if (error.message?.includes("quota") || error.status === 429) {
+        return res.status(429).send("Gemini Quota Exceeded");
+      }
+      res.status(500).send("Error generating Gemini speech: " + error.message);
+    }
+  });
 
   // FPT.AI v5 TTS endpoint with Polling and Caching
   app.get("/api/fpt-tts", async (req, res) => {

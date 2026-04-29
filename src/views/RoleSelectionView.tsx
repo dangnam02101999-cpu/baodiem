@@ -12,28 +12,28 @@ export default function RoleSelectionView({ onSelectRole }: RoleSelectionViewPro
     { 
       id: 'SECRETARY' as Role, 
       title: 'THƯ KÝ', 
-      level: 'Access Level: High', 
+      level: 'Mức truy cập: Cao', 
       icon: FileEdit,
       gradient: 'from-tactical-green to-tactical-green-light'
     },
     { 
       id: 'REPORTER' as Role, 
       title: 'BÁO BIA', 
-      level: 'Access Level: Field', 
+      level: 'Mức truy cập: Hiện trường', 
       icon: Target,
       gradient: 'from-tactical-green to-tactical-green-light'
     },
     { 
       id: 'VIEWER' as Role, 
       title: 'XEM KẾT QUẢ', 
-      level: 'Access Level: Read-Only', 
+      level: 'Mức truy cập: Chỉ xem', 
       icon: BarChart3,
       variant: 'outline'
     },
     { 
       id: 'CALIBRATION' as Role, 
       title: 'BẮN HIỆU CHỈNH', 
-      level: 'Access Level: Technical', 
+      level: 'Mức truy cập: Kỹ thuật', 
       icon: Settings2,
       variant: 'outline'
     },
@@ -49,7 +49,7 @@ export default function RoleSelectionView({ onSelectRole }: RoleSelectionViewPro
             animate={{ opacity: 1 }}
             className="font-headline text-tactical-green font-black tracking-widest text-sm bg-tactical-accent px-3 py-1 rounded-sm uppercase"
           >
-            Command Post Alpha
+            TRUNG TÂM CHỈ HUY ALPHA
           </motion.span>
           <motion.h2 
             initial={{ y: 20, opacity: 0 }}
@@ -103,14 +103,14 @@ export default function RoleSelectionView({ onSelectRole }: RoleSelectionViewPro
         {/* Technical Manual Footnote */}
         <div className="pt-8 border-t border-gray-200 flex justify-between items-end">
           <div className="flex flex-col">
-            <span className="font-sans text-[10px] font-bold text-gray-400 uppercase tracking-widest">Protocol ID</span>
+            <span className="font-sans text-[10px] font-bold text-gray-400 uppercase tracking-widest">Giao thức ID</span>
             <span className="font-headline font-medium text-xs">V.04-DELTA-2024</span>
           </div>
           <div className="text-right">
-            <span className="font-sans text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</span>
+            <span className="font-sans text-[10px] font-bold text-gray-400 uppercase tracking-widest">Trạng thái</span>
             <span className="font-headline font-bold text-xs text-tactical-green flex items-center gap-1">
               <div className="w-2 h-2 bg-tactical-green rounded-full"></div>
-              SECURE LINE
+              ĐƯỜNG TRUYỀN BẢO MẬT
             </span>
           </div>
         </div>

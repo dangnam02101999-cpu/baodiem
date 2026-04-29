@@ -186,7 +186,7 @@ export default function CalibrationView() {
   const renderSelection = () => (
     <div className="max-w-md mx-auto w-full space-y-6">
       <div className="text-center mb-10">
-        <span className="font-sans text-[10px] font-black text-tactical-green bg-tactical-accent px-3 py-1 rounded-sm uppercase tracking-widest">Technical Mode</span>
+        <span className="font-sans text-[10px] font-black text-tactical-green bg-tactical-accent px-3 py-1 rounded-sm uppercase tracking-widest">Chế độ Kỹ thuật</span>
         <h2 className="font-headline text-3xl font-bold mt-4 text-[#1a1c1c] uppercase tracking-tight">BẮN HIỆU CHỈNH</h2>
         <p className="text-gray-400 text-xs mt-2 font-medium uppercase tracking-wider">Vui lòng chọn chế độ làm việc</p>
       </div>

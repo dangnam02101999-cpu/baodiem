@@ -1,6 +1,4 @@
 
-import { generateGeminiSpeech } from '../services/geminiTts';
-
 let audioCtx: AudioContext | null = null;
 let sharedAudio: HTMLAudioElement | null = null;
 
@@ -60,10 +58,13 @@ export const playTts = async (phrase: string): Promise<void> => {
 
   // 1. Try Gemini TTS (High Quality "AI Studio" Voice)
   try {
-    const pcmData = await generateGeminiSpeech(cleanPhrase);
-    if (pcmData) {
-      await playPcmData(pcmData, audioCtx);
-      return; // Success!
+    const response = await fetch(`/api/gemini-tts?text=${encodeURIComponent(cleanPhrase)}`);
+    if (response.ok) {
+      const pcmData = await response.arrayBuffer();
+      if (pcmData && pcmData.byteLength > 0) {
+        await playPcmData(pcmData, audioCtx);
+        return; // Success!
+      }
     }
   } catch (err) {
     console.warn("Gemini TTS failed, trying FPT next...", err);

@@ -202,7 +202,7 @@ export default function TargetReporterView() {
               <Shield className="w-3.5 h-3.5 fill-current" />
             )}
             <p className="text-[7px] font-black leading-tight uppercase">
-              {isBlinking ? systemSignal?.signal : 'READY'}
+              {isBlinking ? (systemSignal?.signal === 'SAFE' ? 'AN TOÀN' : 'NGUY HIỂM') : 'SẴN SÀNG'}
             </p>
           </div>
         </div>
@@ -228,7 +228,7 @@ export default function TargetReporterView() {
                 )}
               >
                 <span className="text-[7px] font-black uppercase opacity-70 leading-none">
-                  {selectedTarget === target ? 'SEL' : 'RDY'}
+                  {selectedTarget === target ? 'ĐANG CHỌN' : 'SẴN SÀNG'}
                 </span>
                 <span className="text-xs font-black">Bia {target}</span>
               </button>
