@@ -30,35 +30,55 @@ export const playTts = async (phrase: string): Promise<void> => {
 
   const cleanPhrase = phrase.trim().replace(/\s+/g, ' ');
 
-  // Exclusively use FPT.AI TTS via Server Proxy (to handle CORS and API Key securely)
   try {
-    const response = await fetch(`/api/fpt-tts?text=${encodeURIComponent(cleanPhrase)}`);
-    if (response.ok) {
-      const audioBlob = await response.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
+    const response = await fetch("/api/fpt-tts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ phrase: cleanPhrase })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server Error: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    if (result.error === 0) {
+      // Use result.url as specified in user logic
+      // Fallback to async if url is missing (common in FPT v5)
+      const audioUrl = result.url || result.async;
       
+      if (!audioUrl) {
+        console.error("FPT API didn't return a URL:", result);
+        return;
+      }
+
+      console.log("Playing FPT Audio:", audioUrl);
+
       return new Promise((resolve) => {
         const tempAudio = new Audio(audioUrl);
-        tempAudio.onended = () => {
-          URL.revokeObjectURL(audioUrl);
-          resolve();
-        };
+        
+        tempAudio.onended = () => resolve();
         tempAudio.onerror = (e) => {
           console.error("FPT Audio Playback Error:", e);
-          URL.revokeObjectURL(audioUrl);
           resolve();
         };
-        tempAudio.play().catch(e => {
-          console.warn("FPT play blocked by browser:", e);
+
+        tempAudio.play().catch(err => {
+          console.warn("FPT play was blocked by browser, click interaction might be needed:", err);
           resolve();
         });
+
+        // Fail-safe timeout
+        setTimeout(resolve, 20000);
       });
     } else {
-      const errorText = await response.text();
-      console.warn("FPT TTS Proxy returned error:", errorText);
+      console.error("Lỗi từ FPT.AI:", result.message);
     }
-  } catch (err) {
-    console.error("FPT TTS Critical Failure:", err);
+  } catch (error) {
+    console.error("Lỗi kết nối FPT:", error);
   }
 };
 

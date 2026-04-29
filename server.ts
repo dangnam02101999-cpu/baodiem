@@ -19,25 +19,15 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
-  // FPT.AI v5 TTS endpoint with Polling and Caching
-  app.get("/api/fpt-tts", async (req, res) => {
-    const { text } = req.query;
-    if (!text) return res.status(400).send("No text provided");
-
-    const phrase = text as string;
-    const hash = crypto.createHash('md5').update(`fpt-${phrase}`).digest('hex');
-    const cachePath = path.join(CACHE_DIR, `${hash}.mp3`);
-
-    if (fs.existsSync(cachePath)) {
-      console.log(`Serving cached FPT TTS: ${hash}.mp3`);
-      return res.sendFile(cachePath);
-    }
-
-    const apiKey = "TulFRBOQWl1iolT0OHMk5Sr2Rewl1hyF";
-    
+  // Simple FPT.AI v5 Proxy
+  app.post("/api/fpt-tts", async (req, res) => {
     try {
-      console.log(`Requesting FPT TTS for: ${phrase.substring(0, 30)}...`);
-      // Use the exact header/body structure suggested by documentation and user
+      const { phrase } = req.body;
+      if (!phrase) return res.status(400).json({ error: 1, message: "No text provided" });
+
+      const apiKey = "TulFRBOQWl1iolT0OHMk5Sr2Rewl1hyF";
+      console.log(`Proxying FPT TTS for: ${phrase.substring(0, 30)}...`);
+
       const fptResponse = await axios({
         method: 'post',
         url: 'https://api.fpt.ai/hmi/tts/v5',
@@ -50,78 +40,11 @@ async function startServer() {
         }
       });
 
-      const fptData = fptResponse.data;
-      if (fptData.error !== 0) {
-        console.error("FPT API Error:", fptData.message);
-        throw new Error(fptData.message || "FPT API Error");
-      }
-
-      // Check for direct url or async field
-      const audioUrl = fptData.url || fptData.async;
-      
-      if (!audioUrl) {
-        console.error("FPT Raw Response:", fptData);
-        throw new Error("FPT API did not return a URL or async URL");
-      }
-
-      console.log(`FPT Audio link found: ${audioUrl}`);
-
-      // 2. Poll/Download the file
-      let downloaded = false;
-      let attempts = 0;
-      const maxAttempts = 15; // Increased attempts for async tasks
-      
-      while (!downloaded && attempts < maxAttempts) {
-        try {
-          const audioResponse = await axios({
-            method: 'get',
-            url: audioUrl,
-            responseType: 'arraybuffer',
-            timeout: 5000
-          });
-          
-          // FPT v5: If it's a JSON response with status 1/0, it's not ready or it's a task status
-          // But if responseType is arraybuffer, it's either the MP3 or binary JSON
-          const contentType = String(audioResponse.headers['content-type'] || '');
-          
-          if (contentType.includes('application/json')) {
-            // It's still a JSON response (like in the async endpoint)
-            const statusData = JSON.parse(Buffer.from(audioResponse.data).toString());
-            if (statusData.status === 1 && statusData.url) {
-              // Now we have the real URL
-              const realAudioResponse = await axios({
-                method: 'get',
-                url: statusData.url,
-                responseType: 'arraybuffer'
-              });
-              fs.writeFileSync(cachePath, realAudioResponse.data);
-              downloaded = true;
-              res.set('Content-Type', 'audio/mpeg');
-              res.send(realAudioResponse.data);
-              return;
-            }
-          } else if (audioResponse.status === 200) {
-            // Likely the MP3 file itself (direct URL or completed async URL that redirects)
-            fs.writeFileSync(cachePath, audioResponse.data);
-            downloaded = true;
-            res.set('Content-Type', 'audio/mpeg');
-            res.send(audioResponse.data);
-            return;
-          }
-        } catch (e: any) {
-          console.log(`Waiting for FPT audio source... attempt ${attempts + 1}`);
-        }
-        
-        await new Promise(r => setTimeout(r, 1000));
-        attempts++;
-      }
-
-      if (!downloaded) throw new Error("FPT Audio download timed out after polling");
-
+      // Return the JSON directly to frontend
+      res.json(fptResponse.data);
     } catch (error: any) {
-      const details = error.response ? JSON.stringify(error.response.data) : error.message;
-      console.error("FPT TTS Error Detail:", details);
-      res.status(error.response?.status || 500).send("FPT Error: " + details);
+      console.error("FPT Proxy Error:", error.message);
+      res.status(500).json({ error: 1, message: error.message });
     }
   });
 
