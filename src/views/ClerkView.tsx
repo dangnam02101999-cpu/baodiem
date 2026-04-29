@@ -113,9 +113,9 @@ export default function ClerkView() {
     // Filter results for this lane and target from the current round's timeframe
     // For simplicity in this demo, we'll just show the latest result for that lane/target
     const laneResults = results.filter(r => r.lane === lane && r.target === target);
-    if (laneResults.length === 0) return '- / - / -';
+    if (laneResults.length === 0) return '-/-/-';
     const latest = laneResults[0]; // results is ordered by timestamp desc
-    return latest.scores.map((s: any) => s === null ? '-' : s).join(' / ');
+    return latest.scores.map((s: any) => s === null ? '-' : s).join('/');
   };
 
   const getSumForLaneAndTarget = (lane: number, target: number) => {
@@ -249,10 +249,14 @@ export default function ClerkView() {
       
       const newResults = lanes.map((lane, index) => {
         const soldier = currentSoldiers[index];
-        const t4 = getSumForLaneAndTarget(lane, 4);
-        const t7 = getSumForLaneAndTarget(lane, 7);
-        const t8 = getSumForLaneAndTarget(lane, 8);
-        const total = t4 + t7 + t8;
+        const t4_scores = getScoreForLaneAndTarget(lane, 4);
+        const t7_scores = getScoreForLaneAndTarget(lane, 7);
+        const t8_scores = getScoreForLaneAndTarget(lane, 8);
+        
+        const t4_sum = getSumForLaneAndTarget(lane, 4);
+        const t7_sum = getSumForLaneAndTarget(lane, 7);
+        const t8_sum = getSumForLaneAndTarget(lane, 8);
+        const total = t4_sum + t7_sum + t8_sum;
         
         // Kiểm tra xem có đủ 3 bia không (nếu có điểm ở cả 3 mục tiêu)
         const hasT4 = results.some(r => r.lane === lane && r.target === 4);
@@ -267,7 +271,7 @@ export default function ClerkView() {
           position: soldier?.position || '---',
           unit: soldier?.unit || '---',
           lane,
-          scores: { target4: t4, target7: t7, target8: t8 },
+          scores: { target4: t4_scores, target7: t7_scores, target8: t8_scores },
           total,
           classification: getClassification(total, isThreeTargets),
           timestamp: new Date().toISOString()
@@ -782,23 +786,25 @@ export default function ClerkView() {
                         <thead>
                           <tr className="bg-gray-50 text-gray-400 uppercase font-black border-b border-gray-100">
                             <th className="py-1.5 px-2 text-left">Họ và Tên</th>
-                            <th className="py-1.5 px-2 text-center">Dải</th>
-                            <th className="py-1.5 px-2 text-center">Bia</th>
-                            <th className="py-1.5 px-2 text-center">Điểm</th>
+                            <th className="py-1.5 px-2 text-center">Tổng</th>
+                            <th className="py-1.5 px-2 text-center">Xếp loại</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {session.results?.map((r: any, idx: number) => (
                             <tr key={idx} className="hover:bg-gray-50/50">
                               <td className="py-1.5 px-2 font-bold truncate max-w-[80px]">{r.name || '---'}</td>
-                              <td className="py-1.5 px-2 text-center">{r.lane}</td>
-                              <td className="py-1.5 px-2 text-center">{r.target}</td>
-                              <td className="py-1.5 px-2 text-center font-black text-tactical-green">
-                                {Array.isArray(r.scores) 
-                                  ? r.scores.join('/') 
-                                  : typeof r.scores === 'object' && r.scores !== null
-                                    ? Object.values(r.scores).join('/')
-                                    : (r.scores || '---')}
+                              <td className="py-1.5 px-2 text-center font-black text-tactical-green">{r.total}</td>
+                              <td className="py-1.5 px-2 text-center">
+                                <span className={cn(
+                                  "px-1 py-0.5 rounded text-[8px] font-black uppercase whitespace-nowrap",
+                                  r.classification === 'Giỏi' ? "bg-tactical-green text-tactical-accent" :
+                                  r.classification === 'Khá' ? "bg-tactical-blue text-white" :
+                                  r.classification === 'Đạt' ? "bg-tactical-warning text-white" :
+                                  "bg-tactical-danger text-white"
+                                )}>
+                                  {r.classification || '---'}
+                                </span>
                               </td>
                             </tr>
                           ))}
