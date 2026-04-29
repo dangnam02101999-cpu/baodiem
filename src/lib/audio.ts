@@ -24,53 +24,13 @@ export const initAudio = () => {
   return { audioCtx, sharedAudio };
 };
 
-/**
- * Plays a PCM ArrayBuffer using Web Audio API.
- * Specifically designed for Gemini TTS output.
- */
-async function playPcmData(buffer: ArrayBuffer, ctx: AudioContext): Promise<void> {
-  // PCM data from Gemini is 16-bit Int, mono, 24kHz
-  const int16 = new Int16Array(buffer);
-  const float32 = new Float32Array(int16.length);
-  
-  for (let i = 0; i < int16.length; i++) {
-    float32[i] = int16[i] / 32768.0;
-  }
-
-  const audioBuffer = ctx.createBuffer(1, float32.length, 24000);
-  audioBuffer.getChannelData(0).set(float32);
-
-  const source = ctx.createBufferSource();
-  source.buffer = audioBuffer;
-  source.connect(ctx.destination);
-  
-  return new Promise((resolve) => {
-    source.onended = () => resolve();
-    source.start();
-  });
-}
-
 export const playTts = async (phrase: string): Promise<void> => {
-  const { audioCtx, sharedAudio: audio } = initAudio();
-  if (!audioCtx || !audio) return;
+  const { sharedAudio: audio } = initAudio();
+  if (!audio) return;
 
   const cleanPhrase = phrase.trim().replace(/\s+/g, ' ');
 
-  // 1. Try Gemini TTS (High Quality "AI Studio" Voice)
-  try {
-    const response = await fetch(`/api/gemini-tts?text=${encodeURIComponent(cleanPhrase)}`);
-    if (response.ok) {
-      const pcmData = await response.arrayBuffer();
-      if (pcmData && pcmData.byteLength > 0) {
-        await playPcmData(pcmData, audioCtx);
-        return; // Success!
-      }
-    }
-  } catch (err) {
-    console.warn("Gemini TTS failed, trying FPT next...", err);
-  }
-
-  // 2. Try FPT.AI TTS (Neural Vietnamese Voice)
+  // 1. Exclusively use FPT.AI TTS (Neural Vietnamese Voice)
   try {
     const fptResponse = await fetch(`/api/fpt-tts?text=${encodeURIComponent(cleanPhrase)}`);
     if (fptResponse.ok) {
@@ -83,83 +43,23 @@ export const playTts = async (phrase: string): Promise<void> => {
           URL.revokeObjectURL(audioUrl);
           resolve();
         };
-        tempAudio.onerror = () => {
+        tempAudio.onerror = (e) => {
+          console.error("FPT Audio Playback Error:", e);
           URL.revokeObjectURL(audioUrl);
           resolve();
         };
         tempAudio.play().catch(e => {
-          console.warn("FPT play failed:", e);
+          console.warn("FPT play blocked by browser:", e);
           resolve();
         });
       });
+    } else {
+      const errorText = await fptResponse.text();
+      console.warn("FPT TTS Proxy returned error:", errorText);
     }
   } catch (err) {
-    console.warn("FPT TTS failed, trying Google fallback...", err);
+    console.error("FPT TTS Critical Failure:", err);
   }
-
-  // 3. Fallback to Google Translate Proxy (Legacy)
-  const encodedText = encodeURIComponent(cleanPhrase);
-  const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodedText}`;
-  const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(ttsUrl)}&t=${Date.now()}`;
-
-  return new Promise((resolve) => {
-    let fallbackTriggered = false;
-
-    const onEnded = () => {
-      audio.removeEventListener('ended', onEnded);
-      audio.removeEventListener('error', onError);
-      resolve();
-    };
-
-    const onError = (e: any) => {
-      if (fallbackTriggered) return;
-      fallbackTriggered = true;
-      
-      console.warn("Google TTS Proxy fallback failed, trying Web Speech API:", e);
-      audio.removeEventListener('ended', onEnded);
-      audio.removeEventListener('error', onError);
-      
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(cleanPhrase);
-        utterance.lang = 'vi-VN';
-        utterance.rate = 1.0;
-        
-        const voices = window.speechSynthesis.getVoices();
-        const viVoice = voices.find(v => v.lang.includes('vi') && (v.name.includes('Google') || v.name.includes('Natural'))) || 
-                        voices.find(v => v.lang.includes('vi'));
-        
-        if (viVoice) utterance.voice = viVoice;
-        
-        utterance.onend = () => resolve();
-        utterance.onerror = () => resolve();
-        window.speechSynthesis.speak(utterance);
-      } else {
-        resolve();
-      }
-    };
-
-    audio.addEventListener('ended', onEnded);
-    audio.addEventListener('error', onError);
-
-    audio.pause();
-    audio.src = proxyUrl;
-    audio.load();
-    
-    const playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise.catch(err => {
-        console.warn("Audio element blocked, using Web Speech fallback:", err);
-        onError(err);
-      });
-    }
-
-    setTimeout(() => {
-      if (audio.paused && !fallbackTriggered) {
-        resolve();
-      }
-    }, 5000);
-  });
 };
 
 export const playSafeSound = async () => {
