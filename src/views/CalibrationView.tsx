@@ -6,7 +6,7 @@ import { db, auth, handleFirestoreError } from '../firebase';
 import { doc, onSnapshot, setDoc, collection } from 'firebase/firestore';
 import { OperationType } from '../types';
 
-import { Target10 } from '../components/Target10';
+import { Target4 } from '../components/Target4';
 
 type CalibrationMode = 'SELECT' | 'REPORTER' | 'SHOOTER';
 
@@ -263,7 +263,7 @@ export default function CalibrationView() {
             <ArrowLeft className="w-4 h-4" />
             <span className="text-[10px] font-black uppercase tracking-widest">Quay lại</span>
           </button>
-          <h2 className="font-headline text-lg font-bold text-tactical-green uppercase">BÁO BIA HIỆU CHỈNH (BIA SỐ 10)</h2>
+          <h2 className="font-headline text-lg font-bold text-tactical-green uppercase">BÁO BIA HIỆU CHỈNH (BIA SỐ 4)</h2>
         </div>
         
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -295,7 +295,7 @@ export default function CalibrationView() {
                 </div>
                 <div className="text-right">
                   <p className="text-[8px] font-black text-gray-400 uppercase">Dải: {selectedLane || '--'}</p>
-                  <p className="text-[10px] font-black text-tactical-green uppercase">BIA SỐ 10</p>
+                  <p className="text-[10px] font-black text-tactical-green uppercase">BIA SỐ 4</p>
                 </div>
               </div>
             </div>
@@ -418,7 +418,7 @@ export default function CalibrationView() {
               className="relative w-full max-w-[400px] aspect-[3/4] cursor-crosshair overflow-hidden rounded-lg border-4 border-[#f3f3f3] bg-white shadow-inner"
               onClick={handleTargetClick}
             >
-              <Target10 className="w-full h-full" />
+              <Target4 className="w-full h-full" />
               
               {/* Hit Markers */}
               {hitCoords.map((hit, i) => hit && (
@@ -514,7 +514,7 @@ export default function CalibrationView() {
                 </h4>
                 
                 <div className="relative w-full max-w-[350px] aspect-[636/572] bg-white rounded-lg overflow-hidden border-4 border-[#f3f3f3] shadow-inner">
-                  <Target10 className="w-full h-full" />
+                  <Target4 className="w-full h-full" />
                   
                   <AnimatePresence>
                     {myData?.hits.map((hit: any, i: number) => hit && (

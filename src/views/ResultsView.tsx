@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Search, CheckCircle, Star, TrendingUp, AlertTriangle, Download, Table as TableIcon, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell as BarCell } from 'recharts';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { db, handleFirestoreError } from '../firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { OperationType } from '../types';
+import { Target4 } from '../components/Target4';
+import { Target7 } from '../components/Target7';
+import { Target8 } from '../components/Target8';
 
 export default function ResultsView() {
   const [savedResults, setSavedResults] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedResult, setSelectedResult] = useState<any>(null);
 
   useEffect(() => {
     // Listen to current_session_results for real-time updates of the ongoing session
@@ -223,9 +228,24 @@ export default function ResultsView() {
                     <td className="px-4 py-4 text-xs text-gray-600">{result.position}</td>
                     <td className="px-4 py-4 text-xs text-gray-600">{result.unit}</td>
                     <td className="px-4 py-4 font-headline font-black text-tactical-green text-xs">DẢI {result.lane}</td>
-                    <td className="px-4 py-4 text-center font-headline font-bold text-xs">{result.scores.target4}</td>
-                    <td className="px-4 py-4 text-center font-headline font-bold text-xs">{result.scores.target7}</td>
-                    <td className="px-4 py-4 text-center font-headline font-bold text-xs">{result.scores.target8}</td>
+                    <td 
+                      className="px-4 py-4 text-center font-headline font-bold text-xs cursor-pointer hover:text-tactical-green hover:font-black"
+                      onClick={() => setSelectedResult({ hits: result.hits?.target4, target: 4, name: result.name, lane: result.lane, scores: result.scores.target4.split('/') })}
+                    >
+                      {result.scores.target4}
+                    </td>
+                    <td 
+                      className="px-4 py-4 text-center font-headline font-bold text-xs cursor-pointer hover:text-tactical-green hover:font-black"
+                      onClick={() => setSelectedResult({ hits: result.hits?.target7, target: 7, name: result.name, lane: result.lane, scores: result.scores.target7.split('/') })}
+                    >
+                      {result.scores.target7}
+                    </td>
+                    <td 
+                      className="px-4 py-4 text-center font-headline font-bold text-xs cursor-pointer hover:text-tactical-green hover:font-black"
+                      onClick={() => setSelectedResult({ hits: result.hits?.target8, target: 8, name: result.name, lane: result.lane, scores: result.scores.target8.split('/') })}
+                    >
+                      {result.scores.target8}
+                    </td>
                     <td className="px-4 py-4 text-center font-headline font-black text-tactical-green text-sm">{result.total}</td>
                     <td className="px-4 py-4 text-center">
                       <span className={cn(
@@ -245,6 +265,93 @@ export default function ResultsView() {
           </table>
         </div>
       </section>
+
+      {/* Result Visualization Modal */}
+      <AnimatePresence>
+        {selectedResult && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="bg-tactical-green p-4 text-tactical-accent flex justify-between items-center shrink-0">
+                <div>
+                  <h3 className="font-headline font-black text-lg uppercase tracking-tight">KẾT QUẢ BIA SỐ {selectedResult.target}</h3>
+                  <p className="text-[10px] font-bold opacity-80 uppercase">
+                    {selectedResult.name} — DẢI {selectedResult.lane}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setSelectedResult(null)}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                >
+                  <ChevronLeft className="w-6 h-6 rotate-180" />
+                </button>
+              </div>
+              
+              <div className="flex-grow overflow-y-auto p-6 flex flex-col items-center gap-6">
+                <div className="grid grid-cols-3 gap-4 w-full">
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex flex-col items-center">
+                      <span className="text-[10px] font-black text-gray-400 uppercase mb-1">PHÁT BẮN {i+1}</span>
+                      <span className="text-2xl font-black text-tactical-green">
+                        {selectedResult.scores?.[i] ?? '-'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className={cn(
+                  "relative w-full border-4 border-gray-100 rounded-2xl overflow-hidden bg-white shadow-inner mx-auto",
+                  selectedResult.target === 4 ? "max-w-[400px] aspect-[636/572]" : 
+                  selectedResult.target === 7 ? "max-w-[300px] aspect-[600/900]" : 
+                  "max-w-[300px] aspect-[600/1200]"
+                )}>
+                  {selectedResult.target === 4 && <Target4 className="w-full h-full" />}
+                  {selectedResult.target === 7 && <Target7 className="w-full h-full" />}
+                  {selectedResult.target === 8 && <Target8 className="w-full h-full" />}
+                  
+                  {/* Hit Markers */}
+                  {(selectedResult.hits || []).map((hit: any, i: number) => hit && (
+                    <div 
+                      key={i}
+                      className={cn(
+                        "absolute w-6 h-6 sm:w-8 sm:h-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white flex items-center justify-center font-black text-[10px] sm:text-xs shadow-xl z-30",
+                        "bg-tactical-green text-tactical-accent"
+                      )}
+                      style={{ 
+                        left: `${50 + hit.x}%`, 
+                        top: `${(selectedResult.target === 4 ? 52.45 : selectedResult.target === 7 ? 27.78 : 29.17) + hit.y}%` 
+                      }}
+                    >
+                      {i + 1}
+                    </div>
+                  ))}
+                  
+                  {(!selectedResult.hits || selectedResult.hits.every((h: any) => !h)) && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50/50 backdrop-blur-[2px]">
+                      <p className="text-gray-400 font-headline font-black text-[10px] uppercase tracking-widest bg-white/80 px-4 py-2 rounded-full shadow-sm border border-gray-100">
+                        KHÔNG CÓ DỮ LIỆU ĐIỂM CHẠM
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-end shrink-0">
+                <button 
+                  onClick={() => setSelectedResult(null)}
+                  className="px-6 py-2 bg-tactical-green text-tactical-accent rounded-xl font-headline font-black text-xs uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all shadow-md"
+                >
+                  ĐÓNG
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

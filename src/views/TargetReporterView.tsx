@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, Send, Delete, ArrowRight, ListOrdered, Target as TargetIcon, Calculator, Loader2, AlertTriangle } from 'lucide-react';
+import { Shield, Send, Delete, ArrowRight, ListOrdered, Target as TargetIcon, Calculator, Loader2, AlertTriangle, Crosshair } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { db, auth, handleFirestoreError } from '../firebase';
@@ -7,16 +7,27 @@ import { collection, addDoc, onSnapshot, doc, setDoc } from 'firebase/firestore'
 import { OperationType } from '../types';
 
 import { playSafeSound, playDangerSound, initAudio } from '../lib/audio';
+import { Target4 } from '../components/Target4';
+import { Target7 } from '../components/Target7';
+import { Target8 } from '../components/Target8';
+
+interface HitCoord {
+  x: number;
+  y: number;
+}
 
 export default function TargetReporterView() {
   const [selectedLane, setSelectedLane] = useState<number | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<number | null>(null);
   const [scores, setScores] = useState<(number | null)[]>([null, null, null]);
+  const [hitCoords, setHitCoords] = useState<(HitCoord | null)[]>([null, null, null]);
   const [currentH, setCurrentH] = useState(0); // 0 for H1, 1 for H2, 2 for H3
+  const [inputPhase, setInputPhase] = useState<'SCORES' | 'COORDS'>('SCORES');
   const [isSending, setIsSending] = useState(false);
   const [systemSignal, setSystemSignal] = useState<{ signal: string, timestamp: number, sender: string } | null>(null);
   const [isBlinking, setIsBlinking] = useState(false);
   const lastSignalTime = useRef<number>(0);
+  const targetRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Real-time listener for system signals
@@ -74,11 +85,21 @@ export default function TargetReporterView() {
       alert('Vui lòng chọn dải và bia trước!');
       return;
     }
+
+    if (inputPhase !== 'SCORES') {
+      if (confirm('Bạn muốn sửa lại điểm số? Vị trí điểm chạm sẽ bị xóa.')) {
+        setInputPhase('SCORES');
+        setHitCoords([null, null, null]);
+        // Reset currentH will be done below implicitly or explicitly
+      } else {
+        return;
+      }
+    }
+
     const newScores = [...scores];
     const currentScore = newScores[currentH];
     
     let nextValue: number;
-    // Logic: if current score is 1 and user presses 0, it becomes 10
     if (currentScore === 1 && num === 0) {
       nextValue = 10;
     } else {
@@ -88,15 +109,15 @@ export default function TargetReporterView() {
     newScores[currentH] = nextValue;
     setScores(newScores);
 
-    // Auto-advance logic: jumping to next slot
-    // If nextValue is 0, 2-9, or 10 (anything but 1)
     if (nextValue !== 1) {
       if (currentH < 2) {
         setCurrentH(prev => prev + 1);
+      } else {
+        // All 3 scores input
+        setInputPhase('COORDS');
+        setCurrentH(0);
       }
     }
-    // If nextValue is 1, we stay at current slot to allow potentially adding '0' for '10'
-    // or requiring manual jump if the user actually meant '1'.
   };
 
   const handleNext = () => {
@@ -111,6 +132,71 @@ export default function TargetReporterView() {
     const newScores = [...scores];
     newScores[currentH] = null;
     setScores(newScores);
+    
+    // Also clear hit coord for this index
+    const newCoords = [...hitCoords];
+    newCoords[currentH] = null;
+    setHitCoords(newCoords);
+
+    // If we were in COORDS phase and cleared a score, we should probably stay in COORDS if others are there, 
+    // but the logic here is per-index. 
+    // Let's just reset phase if all scores are null
+    if (newScores.every(s => s === null)) {
+      setInputPhase('SCORES');
+      setCurrentH(0);
+    }
+  };
+
+  const handleTargetClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (selectedLane === null || selectedTarget === null) {
+      alert('Vui lòng chọn dải và bia trước!');
+      return;
+    }
+
+    if (inputPhase !== 'COORDS') {
+      alert('Vui lòng nhập đủ 3 điểm số trước khi chấm điểm chạm!');
+      return;
+    }
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100 - 50;
+    
+    // Adjust y normalization based on target type
+    let yOffset = 50;
+    if (selectedTarget === 4) yOffset = 52.45;
+    if (selectedTarget === 7) yOffset = 27.78; // (250/900)*100
+    if (selectedTarget === 8) yOffset = 29.17; // (350/1200)*100
+    
+    const y = ((e.clientY - rect.top) / rect.height) * 100 - yOffset;
+    
+    const newCoords = [...hitCoords];
+    newCoords[currentH] = { x, y };
+    setHitCoords(newCoords);
+    
+    // Auto-advance currentH if needed
+    if (currentH < 2) {
+      setCurrentH(prev => prev + 1);
+    }
+  };
+
+  const handleMarkerDrag = (index: number, info: any, containerRect: DOMRect) => {
+    const x = ((info.point.x - containerRect.left) / containerRect.width) * 100 - 50;
+    
+    let yOffset = 50;
+    if (selectedTarget === 4) yOffset = 52.45;
+    if (selectedTarget === 7) yOffset = 27.78;
+    if (selectedTarget === 8) yOffset = 29.17;
+    
+    const y = ((info.point.y - containerRect.top) / containerRect.height) * 100 - yOffset;
+    
+    const newCoords = [...hitCoords];
+    // Width is constrained to horizontal bounds, height is constrained by targetRef in dragConstraints
+    newCoords[index] = { 
+      x: Math.max(-50, Math.min(50, x)), 
+      y: y 
+    };
+    setHitCoords(newCoords);
+    if (currentH !== index) setCurrentH(index);
   };
 
   const handleSend = async () => {
@@ -126,6 +212,7 @@ export default function TargetReporterView() {
         lane: selectedLane,
         target: selectedTarget,
         scores: scores,
+        hits: hitCoords,
         timestamp: Date.now(),
         reporterId: auth.currentUser?.uid || 'anonymous'
       };
@@ -136,7 +223,9 @@ export default function TargetReporterView() {
       
       // Reset for next
       setScores([null, null, null]);
+      setHitCoords([null, null, null]);
       setCurrentH(0);
+      setInputPhase('SCORES');
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
     } finally {
@@ -164,19 +253,24 @@ export default function TargetReporterView() {
       {/* Display Area */}
       <div className="p-2 bg-[#e2e2e2] rounded-lg border-l-4 border-tactical-green shadow-inner shrink-0 mt-1">
         <div className="flex justify-between items-center">
-          <div>
-            <span className="text-[7px] font-bold uppercase tracking-wider text-tactical-green opacity-70">
-              {selectedTarget ? `BIA ${selectedTarget}` : 'CHƯA CHỌN BIA'} - {selectedLane ? `DẢI ${selectedLane}` : 'CHƯA CHỌN DẢI'}
-            </span>
+          <div className="flex-grow">
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-[7px] font-bold uppercase tracking-wider text-tactical-green opacity-70">
+                {selectedTarget ? `BIA ${selectedTarget}` : 'CHƯA CHỌN BIA'} - {selectedLane ? `DẢI ${selectedLane}` : 'CHƯA CHỌN DẢI'}
+              </span>
+            </div>
             <div className="flex items-center gap-2">
               {[0, 1, 2].map((i) => (
                 <React.Fragment key={i}>
                   <div 
                     className={cn(
-                      "flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors",
-                      currentH === i && "bg-tactical-green/10 ring-1 ring-tactical-green"
+                      "flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors cursor-pointer",
+                      currentH === i ? "bg-tactical-green/10 ring-1 ring-tactical-green" : "hover:bg-gray-100"
                     )}
-                    onClick={() => setCurrentH(i)}
+                    onClick={() => {
+                      setCurrentH(i);
+                      // If user clicks a score while in COORDS phase, maybe they want to edit it?
+                    }}
                   >
                     <span className="text-[10px] font-bold text-tactical-green/60">H{i + 1}:</span>
                     <span className={cn(
@@ -185,6 +279,9 @@ export default function TargetReporterView() {
                     )}>
                       {scores[i] !== null ? scores[i] : '-'}
                     </span>
+                    {hitCoords[i] && (
+                      <div className="w-1.5 h-1.5 bg-tactical-warning rounded-full ml-1" title="Đã có vị trí"></div>
+                    )}
                   </div>
                   {i < 2 && <div className="w-[1px] h-3 bg-gray-300"></div>}
                 </React.Fragment>
@@ -262,7 +359,10 @@ export default function TargetReporterView() {
         </section>
 
         {/* Numeric Keypad Section */}
-        <section className="bg-[#f3f3f3] p-1.5 rounded-lg flex flex-col shrink-0">
+        <section className={cn(
+          "bg-[#f3f3f3] p-1.5 rounded-lg flex flex-col shrink-0 transition-opacity",
+          inputPhase !== 'SCORES' && "opacity-50 pointer-events-none"
+        )}>
           <div className="flex items-center gap-2 mb-1 border-b border-gray-300 pb-0.5">
             <Calculator className="text-tactical-green w-3.5 h-3.5" />
             <h3 className="text-[9px] font-bold font-headline uppercase">NHẬP ĐIỂM</h3>
@@ -283,49 +383,114 @@ export default function TargetReporterView() {
             ))}
           </div>
         </section>
-      </div>
 
-      {/* Tactical Bottom Actions - Moved outside scrollable area */}
-      <div className="grid grid-cols-4 gap-1 pb-2 shrink-0 border-t border-gray-100 pt-2 bg-white/50 backdrop-blur-sm -mx-3 px-3">
-        <button 
-          onClick={() => sendSignal('SAFE')}
-          className={cn(
-            "flex flex-col items-center justify-center py-2 rounded-lg shadow-sm active:scale-95 transition-all border",
-            isBlinking && systemSignal?.signal === 'SAFE' ? "bg-tactical-green text-tactical-accent border-tactical-green animate-blink" : "bg-white text-gray-400 border-gray-100"
-          )}
-        >
-          <Shield className="w-5 h-5 mb-0.5 fill-current" />
-          <span className="text-[8px] font-black font-headline uppercase tracking-wider">AN TOÀN</span>
-        </button>
-        <button 
-          onClick={() => sendSignal('DANGER')}
-          className={cn(
-            "flex flex-col items-center justify-center py-2 rounded-lg shadow-sm active:scale-95 transition-all border",
-            isBlinking && systemSignal?.signal === 'DANGER' ? "bg-red-600 text-white border-red-600 animate-blink" : "bg-white text-gray-400 border-gray-100"
-          )}
-        >
-          <AlertTriangle className="w-5 h-5 mb-0.5 fill-current" />
-          <span className="text-[8px] font-black font-headline uppercase tracking-wider">NGUY HIỂM</span>
-        </button>
-        <button 
-          onClick={handleSend}
-          disabled={isSending}
-          className="flex flex-col items-center justify-center py-2 bg-tactical-warning text-white rounded-lg shadow-sm active:scale-95 transition-all disabled:opacity-50"
-        >
-          {isSending ? (
-            <Loader2 className="w-5 h-5 mb-0.5 animate-spin" />
-          ) : (
-            <Send className="w-5 h-5 mb-0.5 fill-current" />
-          )}
-          <span className="text-[8px] font-black font-headline uppercase tracking-wider">GỬI</span>
-        </button>
-        <button 
-          onClick={handleClear}
-          className="flex flex-col items-center justify-center py-2 bg-tactical-blue text-white rounded-lg shadow-sm active:scale-95 transition-all"
-        >
-          <Delete className="w-5 h-5 mb-0.5 fill-current" />
-          <span className="text-[8px] font-black font-headline uppercase tracking-wider">XÓA</span>
-        </button>
+        {/* Tactical Actions - Moved above Báo Bia Section */}
+        <div className="grid grid-cols-4 gap-1 px-1 py-1 shrink-0 bg-[#f3f3f3] rounded-lg">
+          <button 
+            onClick={() => sendSignal('SAFE')}
+            className={cn(
+              "flex flex-col items-center justify-center py-2 rounded-lg shadow-sm active:scale-95 transition-all border",
+              isBlinking && systemSignal?.signal === 'SAFE' ? "bg-tactical-green text-tactical-accent border-tactical-green animate-blink" : "bg-white text-gray-400 border-gray-100"
+            )}
+          >
+            <Shield className="w-5 h-5 mb-0.5 fill-current" />
+            <span className="text-[8px] font-black font-headline uppercase tracking-wider">AN TOÀN</span>
+          </button>
+          <button 
+            onClick={() => sendSignal('DANGER')}
+            className={cn(
+              "flex flex-col items-center justify-center py-2 rounded-lg shadow-sm active:scale-95 transition-all border",
+              isBlinking && systemSignal?.signal === 'DANGER' ? "bg-red-600 text-white border-red-600 animate-blink" : "bg-white text-gray-400 border-gray-100"
+            )}
+          >
+            <AlertTriangle className="w-5 h-5 mb-0.5 fill-current" />
+            <span className="text-[8px] font-black font-headline uppercase tracking-wider">NGUY HIỂM</span>
+          </button>
+          <button 
+            onClick={handleSend}
+            disabled={isSending}
+            className="flex flex-col items-center justify-center py-2 bg-tactical-warning text-white rounded-lg shadow-sm active:scale-95 transition-all disabled:opacity-50"
+          >
+            {isSending ? (
+              <Loader2 className="w-5 h-5 mb-0.5 animate-spin" />
+            ) : (
+              <Send className="w-5 h-5 mb-0.5 fill-current" />
+            )}
+            <span className="text-[8px] font-black font-headline uppercase tracking-wider">GỬI</span>
+          </button>
+          <button 
+            onClick={handleClear}
+            className="flex flex-col items-center justify-center py-2 bg-tactical-blue text-white rounded-lg shadow-sm active:scale-95 transition-all"
+          >
+            <Delete className="w-5 h-5 mb-0.5 fill-current" />
+            <span className="text-[8px] font-black font-headline uppercase tracking-wider">XÓA</span>
+          </button>
+        </div>
+
+        {/* Báo Bia Section */}
+        <section className={cn(
+          "bg-[#f3f3f3] p-1.5 rounded-lg flex flex-col shrink-0 transition-opacity",
+          inputPhase !== 'COORDS' && "opacity-50"
+        )}>
+          <div className="flex items-center gap-2 mb-1 border-b border-gray-300 pb-0.5">
+            <Crosshair className="text-tactical-green w-3.5 h-3.5" />
+            <h3 className="text-[9px] font-bold font-headline uppercase">BÁO BIA ĐIỂM CHẠM</h3>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <div className="text-center">
+              <p className="text-[8px] font-black text-gray-400 uppercase tracking-tighter">
+                {inputPhase === 'COORDS' 
+                  ? `Chấm vị trí cho H${currentH+1} (${scores[currentH]} điểm)` 
+                  : "Hoàn thiện nhập điểm trước"}
+              </p>
+            </div>
+            
+            <div 
+              ref={targetRef}
+              className={cn(
+                "relative w-full max-w-[280px] cursor-crosshair overflow-hidden rounded-lg border-2 border-[#e2e2e2] bg-white shadow-inner transition-all",
+                selectedTarget === 4 ? "aspect-[636/572]" : selectedTarget === 7 ? "aspect-[600/900]" : selectedTarget === 8 ? "aspect-[600/1200]" : "aspect-square"
+              )}
+              onClick={handleTargetClick}
+            >
+              {selectedTarget === 4 && <Target4 className="w-full h-full" />}
+              {selectedTarget === 7 && <Target7 className="w-full h-full" />}
+              {selectedTarget === 8 && <Target8 className="w-full h-full" />}
+              {!selectedTarget && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                  <TargetIcon className="w-10 h-10 text-gray-200" />
+                </div>
+              )}
+              
+              {/* Hit Markers */}
+              {hitCoords.map((hit, i) => hit && (
+                <motion.div 
+                  key={i}
+                  drag
+                  dragMomentum={false}
+                  dragConstraints={targetRef}
+                  dragElastic={0}
+                  onDrag={(_, info) => targetRef.current && handleMarkerDrag(i, info, targetRef.current.getBoundingClientRect())}
+                  whileDrag={{ scale: 1.15, zIndex: 50, cursor: 'grabbing' }}
+                  className={cn(
+                    "absolute w-7 h-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 flex items-center justify-center font-black text-[11px] shadow-xl cursor-grab z-30 touch-none select-none",
+                    currentH === i ? "bg-tactical-green text-tactical-accent border-white" : "bg-white text-tactical-green border-tactical-green/50 opacity-90"
+                  )}
+                  style={{ 
+                    left: `${50 + hit.x}%`, 
+                    top: `${(selectedTarget === 4 ? 52.45 : selectedTarget === 7 ? 27.78 : 29.17) + hit.y}%` 
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCurrentH(i);
+                  }}
+                >
+                  H{i + 1}
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );

@@ -10,6 +10,9 @@ import { collection, onSnapshot, query, orderBy, getDocs, writeBatch, doc, delet
 import { OperationType } from '../types';
 
 import { playSafeSound, playDangerSound, initAudio, playTts } from '../lib/audio';
+import { Target4 } from '../components/Target4';
+import { Target7 } from '../components/Target7';
+import { Target8 } from '../components/Target8';
 
 export default function ClerkView() {
   const lanes = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -23,6 +26,7 @@ export default function ClerkView() {
   const [isUpdatingName, setIsUpdatingName] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [selectedResult, setSelectedResult] = useState<any>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState('');
@@ -257,6 +261,10 @@ export default function ClerkView() {
         const t7_sum = getSumForLaneAndTarget(lane, 7);
         const t8_sum = getSumForLaneAndTarget(lane, 8);
         const total = t4_sum + t7_sum + t8_sum;
+
+        const t4_hits = results.find(r => r.lane === lane && r.target === 4)?.hits || [null, null, null];
+        const t7_hits = results.find(r => r.lane === lane && r.target === 7)?.hits || [null, null, null];
+        const t8_hits = results.find(r => r.lane === lane && r.target === 8)?.hits || [null, null, null];
         
         // Kiểm tra xem có đủ 3 bia không (nếu có điểm ở cả 3 mục tiêu)
         const hasT4 = results.some(r => r.lane === lane && r.target === 4);
@@ -272,6 +280,7 @@ export default function ClerkView() {
           unit: soldier?.unit || '---',
           lane,
           scores: { target4: t4_scores, target7: t7_scores, target8: t8_scores },
+          hits: { target4: t4_hits, target7: t7_hits, target8: t8_hits },
           total,
           classification: getClassification(total, isThreeTargets),
           timestamp: new Date().toISOString()
@@ -522,9 +531,33 @@ export default function ClerkView() {
               {lanes.map((lane) => (
                 <tr key={lane} className="hover:bg-[#f3f3f3] transition-colors">
                   <td className="py-3 px-2 text-left pl-4 font-headline font-black text-tactical-green">DẢI {lane}</td>
-                  <td className="py-3 px-2 font-headline font-bold text-xs tracking-tighter">{getScoreForLaneAndTarget(lane, 4)}</td>
-                  <td className="py-3 px-2 font-headline font-bold text-xs tracking-tighter">{getScoreForLaneAndTarget(lane, 7)}</td>
-                  <td className="py-3 px-2 font-headline font-bold text-xs tracking-tighter">{getScoreForLaneAndTarget(lane, 8)}</td>
+                  <td 
+                    className="py-3 px-2 font-headline font-bold text-xs tracking-tighter cursor-pointer hover:text-tactical-green"
+                    onClick={() => {
+                        const res = results.find(r => r.lane === lane && r.target === 4);
+                        if (res) setSelectedResult({ ...res, target: 4, name: shootingQueue.slice(currentRound * 8, (currentRound + 1) * 8)[lane - 1]?.name || `Dải ${lane}` });
+                    }}
+                  >
+                    {getScoreForLaneAndTarget(lane, 4)}
+                  </td>
+                  <td 
+                    className="py-3 px-2 font-headline font-bold text-xs tracking-tighter cursor-pointer hover:text-tactical-green"
+                    onClick={() => {
+                        const res = results.find(r => r.lane === lane && r.target === 7);
+                        if (res) setSelectedResult({ ...res, target: 7, name: shootingQueue.slice(currentRound * 8, (currentRound + 1) * 8)[lane - 1]?.name || `Dải ${lane}` });
+                    }}
+                  >
+                    {getScoreForLaneAndTarget(lane, 7)}
+                  </td>
+                  <td 
+                    className="py-3 px-2 font-headline font-bold text-xs tracking-tighter cursor-pointer hover:text-tactical-green"
+                    onClick={() => {
+                        const res = results.find(r => r.lane === lane && r.target === 8);
+                        if (res) setSelectedResult({ ...res, target: 8, name: shootingQueue.slice(currentRound * 8, (currentRound + 1) * 8)[lane - 1]?.name || `Dải ${lane}` });
+                    }}
+                  >
+                    {getScoreForLaneAndTarget(lane, 8)}
+                  </td>
                   <td className="py-3 px-2 font-headline font-black text-tactical-green-light">{getTotalForLane(lane)}</td>
                 </tr>
               ))}
@@ -704,9 +737,24 @@ export default function ClerkView() {
                     <tr key={i} className="text-xs hover:bg-gray-50 transition-colors">
                       <td className="py-2 px-4 font-semibold">{r.name}</td>
                       <td className="py-2 px-4 text-tactical-green font-bold">Dải {r.lane}</td>
-                      <td className="py-2 px-4 text-center">{r.scores.target4}</td>
-                      <td className="py-2 px-4 text-center">{r.scores.target7}</td>
-                      <td className="py-2 px-4 text-center">{r.scores.target8}</td>
+                      <td 
+                        className="py-2 px-4 text-center cursor-pointer hover:font-bold hover:text-tactical-green"
+                        onClick={() => setSelectedResult({ hits: r.hits.target4, target: 4, name: r.name, lane: r.lane, scores: r.scores.target4.split('/') })}
+                      >
+                        {r.scores.target4}
+                      </td>
+                      <td 
+                        className="py-2 px-4 text-center cursor-pointer hover:font-bold hover:text-tactical-green"
+                        onClick={() => setSelectedResult({ hits: r.hits.target7, target: 7, name: r.name, lane: r.lane, scores: r.scores.target7.split('/') })}
+                      >
+                        {r.scores.target7}
+                      </td>
+                      <td 
+                        className="py-2 px-4 text-center cursor-pointer hover:font-bold hover:text-tactical-green"
+                        onClick={() => setSelectedResult({ hits: r.hits.target8, target: 8, name: r.name, lane: r.lane, scores: r.scores.target8.split('/') })}
+                      >
+                        {r.scores.target8}
+                      </td>
                       <td className="py-2 px-4 text-center font-black text-tactical-green">{r.total}</td>
                       <td className="py-2 px-4 text-center">
                         <span className={cn(
@@ -781,23 +829,23 @@ export default function ClerkView() {
                   </div>
 
                   {expandedSessionId === session.id && (
-                    <div className="bg-white border border-gray-100 rounded-lg overflow-hidden">
-                      <table className="w-full text-[10px] border-collapse">
+                    <div className="bg-white border border-gray-100 rounded-lg overflow-hidden mb-3">
+                      <table className="w-full text-[9px] border-collapse">
                         <thead>
                           <tr className="bg-gray-50 text-gray-400 uppercase font-black border-b border-gray-100">
-                            <th className="py-1.5 px-2 text-left">Họ và Tên</th>
-                            <th className="py-1.5 px-2 text-center">Tổng</th>
-                            <th className="py-1.5 px-2 text-center">Xếp loại</th>
+                            <th className="py-1.5 px-1 text-left pl-2">Họ tên</th>
+                            <th className="py-1.5 px-1 text-center">Tổng</th>
+                            <th className="py-1.5 px-1 text-center pr-2">Loại</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                          {session.results?.map((r: any, idx: number) => (
+                          {session.results.map((r: any, idx: number) => (
                             <tr key={idx} className="hover:bg-gray-50/50">
-                              <td className="py-1.5 px-2 font-bold truncate max-w-[80px]">{r.name || '---'}</td>
-                              <td className="py-1.5 px-2 text-center font-black text-tactical-green">{r.total}</td>
-                              <td className="py-1.5 px-2 text-center">
+                              <td className="py-1.5 px-1 pl-2 font-bold truncate max-w-[80px]">{r.name || '---'}</td>
+                              <td className="py-1.5 px-1 text-center font-black text-tactical-green">{r.total}</td>
+                              <td className="py-1.5 px-1 text-center pr-2">
                                 <span className={cn(
-                                  "px-1 py-0.5 rounded text-[8px] font-black uppercase whitespace-nowrap",
+                                  "px-1 py-0.5 rounded text-[7px] font-black uppercase whitespace-nowrap",
                                   r.classification === 'Giỏi' ? "bg-tactical-green text-tactical-accent" :
                                   r.classification === 'Khá' ? "bg-tactical-blue text-white" :
                                   r.classification === 'Đạt' ? "bg-tactical-warning text-white" :
@@ -962,6 +1010,92 @@ export default function ClerkView() {
                   className="flex-1 py-3 bg-red-600 text-white rounded-xl font-headline font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200"
                 >
                   XÁC NHẬN XÓA
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Result Visualization Modal */}
+      <AnimatePresence>
+        {selectedResult && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="bg-tactical-green p-4 text-tactical-accent flex justify-between items-center shrink-0">
+                <div>
+                  <h3 className="font-headline font-black text-lg uppercase tracking-tight">KẾT QUẢ BIA SỐ {selectedResult.target}</h3>
+                  <p className="text-[10px] font-bold opacity-80 uppercase">
+                    {selectedResult.name} — DẢI {selectedResult.lane}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setSelectedResult(null)}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                >
+                  <ChevronLeft className="w-6 h-6 rotate-180" />
+                </button>
+              </div>
+              
+              <div className="flex-grow overflow-y-auto p-6 flex flex-col items-center gap-6">
+                <div className="grid grid-cols-3 gap-4 w-full">
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex flex-col items-center">
+                      <span className="text-[10px] font-black text-gray-400 uppercase mb-1">PHÁT BẮN {i+1}</span>
+                      <span className="text-2xl font-black text-tactical-green">
+                        {selectedResult.scores?.[i] ?? (selectedResult.scores ? selectedResult.scores[i] : (selectedResult.scores?.[i] ?? '-'))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className={cn(
+                  "relative w-full border-4 border-gray-100 rounded-2xl overflow-hidden bg-white shadow-inner mx-auto",
+                  selectedResult.target === 4 ? "max-w-[400px] aspect-[636/572]" : 
+                  selectedResult.target === 7 ? "max-w-[300px] aspect-[600/900]" : 
+                  "max-w-[300px] aspect-[600/1200]"
+                )}>
+                  {selectedResult.target === 4 && <Target4 className="w-full h-full" />}
+                  {selectedResult.target === 7 && <Target7 className="w-full h-full" />}
+                  {selectedResult.target === 8 && <Target8 className="w-full h-full" />}
+                  
+                  {/* Hit Markers */}
+                  {(selectedResult.hits || []).map((hit: any, i: number) => hit && (
+                    <div 
+                      key={i}
+                      className={cn(
+                        "absolute w-6 h-6 sm:w-8 sm:h-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white flex items-center justify-center font-black text-[10px] sm:text-xs shadow-xl z-30",
+                        "bg-tactical-green text-tactical-accent"
+                      )}
+                      style={{ 
+                        left: `${50 + hit.x}%`, 
+                        top: `${(selectedResult.target === 4 ? 52.45 : selectedResult.target === 7 ? 27.78 : 29.17) + hit.y}%` 
+                      }}
+                    >
+                      {i + 1}
+                    </div>
+                  ))}
+                  
+                  {(!selectedResult.hits || selectedResult.hits.every((h: any) => !h)) && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50/50 backdrop-blur-[2px]">
+                      <p className="text-gray-400 font-headline font-black text-[10px] uppercase tracking-widest bg-white/80 px-4 py-2 rounded-full shadow-sm border border-gray-100">
+                        KHÔNG CÓ DỮ LIỆU ĐIỂM CHẠM
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-end shrink-0">
+                <button 
+                  onClick={() => setSelectedResult(null)}
+                  className="px-6 py-2 bg-tactical-green text-tactical-accent rounded-xl font-headline font-black text-xs uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all shadow-md"
+                >
+                  ĐÓNG
                 </button>
               </div>
             </motion.div>
