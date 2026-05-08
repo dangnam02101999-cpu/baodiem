@@ -136,15 +136,15 @@ export default function ClerkView() {
   const getClassification = (total: number, isThreeTargets: boolean) => {
     if (isThreeTargets) {
       // Bài bắn 3 bia (tổng tối đa 90)
-      if (total >= 73) return 'Giỏi';
-      if (total >= 57) return 'Khá';
+      if (total >= 72) return 'Giỏi';
+      if (total >= 55) return 'Khá';
       if (total >= 45) return 'Đạt';
       return 'Không đạt';
     }
     // Bài bắn 1 bia (tổng tối đa 30)
-    if (total >= 27) return 'Giỏi';
-    if (total >= 24) return 'Khá';
-    if (total >= 18) return 'Đạt';
+    if (total >= 24) return 'Giỏi';
+    if (total >= 19) return 'Khá';
+    if (total >= 15) return 'Đạt';
     return 'Không đạt';
   };
 
