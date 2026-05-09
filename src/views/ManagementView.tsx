@@ -3,6 +3,7 @@ import { UserPlus, UploadCloud, Save, Edit, Trash2, Printer, ChevronDown, Verifi
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 import { cn } from '../lib/utils';
+import { exportResultsToExcel } from '../lib/excelExport';
 import { MOCK_SOLDIERS, RANKS } from '../constants';
 import { db, handleFirestoreError } from '../firebase';
 import { collection, onSnapshot, setDoc, doc, deleteDoc, writeBatch, query, orderBy } from 'firebase/firestore';
@@ -208,7 +209,7 @@ export default function ManagementView() {
     localStorage.setItem('shooting_history', JSON.stringify(history));
   }, [history]);
 
-  const handleSaveDatabase = () => {
+  const handleSaveDatabase = async () => {
     const savedResults = JSON.parse(localStorage.getItem('saved_results') || '[]');
     if (savedResults.length === 0) {
       alert('Không có kết quả bắn nào để lưu!');
@@ -219,37 +220,12 @@ export default function ManagementView() {
     if (!sessionName) return;
 
     // 1. Export to Excel
-    const wb = XLSX.utils.book_new();
-    
-    // Sheet 1: Detailed Results
-    const wsData = savedResults.map((r: any, index: number) => ({
-      'STT': index + 1,
-      'Họ và Tên': r.name,
-      'Cấp bậc': r.rank,
-      'Chức vụ': r.position,
-      'Đơn vị': r.unit,
-      'Dải': r.lane,
-      'Bia 4': r.scores.target4,
-      'Bia 7': r.scores.target7,
-      'Bia 8': r.scores.target8,
-      'Tổng điểm': r.total,
-      'Xếp loại': r.classification
-    }));
-    const ws = XLSX.utils.json_to_sheet(wsData);
-    XLSX.utils.book_append_sheet(wb, ws, "Kết quả chi tiết");
-
-    // Sheet 2: Statistics
-    const stats = {
-      'Tổng quân số': savedResults.length,
-      'Giỏi': savedResults.filter((r: any) => r.classification === 'Giỏi').length,
-      'Khá': savedResults.filter((r: any) => r.classification === 'Khá').length,
-      'Đạt': savedResults.filter((r: any) => r.classification === 'Đạt').length,
-      'Không đạt': savedResults.filter((r: any) => r.classification === 'Không đạt').length,
-    };
-    const wsStats = XLSX.utils.json_to_sheet([stats]);
-    XLSX.utils.book_append_sheet(wb, wsStats, "Thống kê chung");
-
-    XLSX.writeFile(wb, `${sessionName}.xlsx`);
+    try {
+      await exportResultsToExcel(savedResults, sessionName);
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Xuất file Excel thất bại!');
+    }
 
     // 2. Save to History
     const newHistoryItem = {
@@ -280,24 +256,13 @@ export default function ManagementView() {
     resetSystem();
   };
 
-  const downloadHistoryExcel = (item: any) => {
-    const wb = XLSX.utils.book_new();
-    const wsData = item.data.map((r: any, index: number) => ({
-      'STT': index + 1,
-      'Họ và Tên': r.name,
-      'Cấp bậc': r.rank,
-      'Chức vụ': r.position,
-      'Đơn vị': r.unit,
-      'Dải': r.lane,
-      'Bia 4': r.scores.target4,
-      'Bia 7': r.scores.target7,
-      'Bia 8': r.scores.target8,
-      'Tổng điểm': r.total,
-      'Xếp loại': r.classification
-    }));
-    const ws = XLSX.utils.json_to_sheet(wsData);
-    XLSX.utils.book_append_sheet(wb, ws, "Kết quả");
-    XLSX.writeFile(wb, `${item.name}.xlsx`);
+  const downloadHistoryExcel = async (item: any) => {
+    try {
+      await exportResultsToExcel(item.data, item.name);
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Xuất file Excel thất bại!');
+    }
   };
 
   const downloadTemplate = () => {

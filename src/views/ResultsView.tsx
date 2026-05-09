@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, CheckCircle, Star, TrendingUp, AlertTriangle, Download, Table as TableIcon, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Search, CheckCircle, Star, TrendingUp, AlertTriangle, Download, Table as TableIcon, ChevronLeft, ChevronRight, Loader2, FileSpreadsheet } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell as BarCell } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
+import { exportResultsToExcel } from '../lib/excelExport';
 import { cn } from '../lib/utils';
 import { db, handleFirestoreError } from '../firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
@@ -13,6 +14,7 @@ import { Target8 } from '../components/Target8';
 export default function ResultsView() {
   const [savedResults, setSavedResults] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [selectedResult, setSelectedResult] = useState<any>(null);
 
   useEffect(() => {
@@ -79,8 +81,23 @@ export default function ResultsView() {
           <button className="px-4 py-2 text-gray-400 hover:text-tactical-green rounded-md text-xs font-black uppercase tracking-wider transition-colors">Bài 2: Nâng cao</button>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm text-xs font-bold hover:bg-gray-50 transition-colors">
-            <Download className="w-4 h-4" />
+          <button 
+            onClick={async () => {
+              if (savedResults.length === 0) return alert('Không có dữ liệu!');
+              setIsExporting(true);
+              try {
+                await exportResultsToExcel(savedResults, 'Ket_qua_phien_ban_truc_tiep');
+              } catch (error) {
+                console.error('Export failed:', error);
+                alert('Xuất file Excel thất bại!');
+              } finally {
+                setIsExporting(false);
+              }
+            }}
+            disabled={isExporting}
+            className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm text-xs font-bold hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
             XUẤT EXCEL
           </button>
         </div>

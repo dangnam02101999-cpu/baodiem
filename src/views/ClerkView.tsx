@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast';
 import { Play, Shield, AlertTriangle, ChevronLeft, ChevronRight, Loader2, Save, FileSpreadsheet, Trash2, FolderOpen, Edit, CheckCircle, Volume2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
+import { exportResultsToExcel } from '../lib/excelExport';
 import { MOCK_SOLDIERS } from '../constants';
 import { cn } from '../lib/utils';
 import { db, handleFirestoreError } from '../firebase';
@@ -333,24 +334,16 @@ export default function ClerkView() {
     }
   };
 
-  const exportToExcel = (data: any[], fileName: string) => {
-    const worksheet = XLSX.utils.json_to_sheet(data.map((r, idx) => ({
-      'STT': idx + 1,
-      'Họ và Tên': r.name,
-      'Cấp bậc': r.rank,
-      'Chức vụ': r.position,
-      'Đơn vị': r.unit,
-      'Dải': r.lane,
-      'Bia 4': r.scores.target4,
-      'Bia 7': r.scores.target7,
-      'Bia 8': r.scores.target8,
-      'Tổng điểm': r.total,
-      'Xếp loại': r.classification,
-      'Thời gian': new Date(r.timestamp).toLocaleString()
-    })));
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Kết quả");
-    XLSX.writeFile(workbook, `${fileName}.xlsx`);
+  const exportToExcel = async (data: any[], fileName: string) => {
+    setIsExporting(true);
+    try {
+      await exportResultsToExcel(data, fileName);
+    } catch (error) {
+      console.error('Export failed:', error);
+      toast.error('Xuất file Excel thất bại!');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleFinalSave = async () => {
@@ -462,34 +455,43 @@ export default function ClerkView() {
           </h2>
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             <button 
-              onClick={() => {
+              onClick={async () => {
                 if (results.length === 0) return alert('Không có dữ liệu trực tiếp!');
                 // Format live results for export
-                const liveData = lanes.map(lane => ({
-                  name: shootingQueue.slice(currentRound * 8, (currentRound + 1) * 8)[lane - 1]?.name || `Dải ${lane}`,
-                  rank: shootingQueue.slice(currentRound * 8, (currentRound + 1) * 8)[lane - 1]?.rank || '---',
-                  position: shootingQueue.slice(currentRound * 8, (currentRound + 1) * 8)[lane - 1]?.position || '---',
-                  unit: shootingQueue.slice(currentRound * 8, (currentRound + 1) * 8)[lane - 1]?.unit || '---',
-                  lane,
-                  scores: {
-                    target4: getSumForLaneAndTarget(lane, 4),
-                    target7: getSumForLaneAndTarget(lane, 7),
-                    target8: getSumForLaneAndTarget(lane, 8)
-                  },
-                  total: getTotalForLane(lane),
-                  classification: getClassification(
-                    getTotalForLane(lane),
-                    results.some(r => r.lane === lane && r.target === 4) &&
-                    results.some(r => r.lane === lane && r.target === 7) &&
-                    results.some(r => r.lane === lane && r.target === 8)
-                  ),
-                  timestamp: new Date().toISOString()
-                }));
-                exportToExcel(liveData, 'Ket_qua_truc_tiep_luot_ban');
+                const liveData = lanes.map(lane => {
+                  const currentSoldiers = shootingQueue.slice(currentRound * 8, (currentRound + 1) * 8);
+                  return {
+                    name: currentSoldiers[lane - 1]?.name || `Dải ${lane}`,
+                    rank: currentSoldiers[lane - 1]?.rank || '---',
+                    position: currentSoldiers[lane - 1]?.position || '---',
+                    unit: currentSoldiers[lane - 1]?.unit || '---',
+                    lane,
+                    scores: {
+                      target4: getSumForLaneAndTarget(lane, 4),
+                      target7: getSumForLaneAndTarget(lane, 7),
+                      target8: getSumForLaneAndTarget(lane, 8)
+                    },
+                    total: getTotalForLane(lane),
+                    hits: {
+                      target4: results.find(r => r.lane === lane && r.target === 4)?.hits || [],
+                      target7: results.find(r => r.lane === lane && r.target === 7)?.hits || [],
+                      target8: results.find(r => r.lane === lane && r.target === 8)?.hits || [],
+                    },
+                    classification: getClassification(
+                      getTotalForLane(lane),
+                      results.some(r => r.lane === lane && r.target === 4) &&
+                      results.some(r => r.lane === lane && r.target === 7) &&
+                      results.some(r => r.lane === lane && r.target === 8)
+                    ),
+                    timestamp: new Date().toISOString()
+                  };
+                });
+                await exportToExcel(liveData, 'Ket_qua_truc_tiep_luot_ban');
               }}
-              className="flex-1 sm:flex-none px-3 py-2 bg-white border border-tactical-green text-tactical-green rounded-lg font-headline font-bold text-[9px] flex items-center justify-center gap-2 hover:bg-tactical-green hover:text-white transition-all"
+              disabled={isExporting}
+              className="flex-1 sm:flex-none px-3 py-2 bg-white border border-tactical-green text-tactical-green rounded-lg font-headline font-bold text-[9px] flex items-center justify-center gap-2 hover:bg-tactical-green hover:text-white transition-all disabled:opacity-50"
             >
-              <FileSpreadsheet className="w-3 h-3" />
+              {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileSpreadsheet className="w-3 h-3" />}
               XUẤT EXCEL
             </button>
             <button 
@@ -694,14 +696,15 @@ export default function ClerkView() {
           </div>
           <div className="flex gap-2">
             <button 
-              onClick={() => {
+              onClick={async () => {
                 const tempResults = JSON.parse(localStorage.getItem('session_temp_results') || '[]');
                 if (tempResults.length === 0) return alert('Không có dữ liệu!');
-                exportToExcel(tempResults, 'Ket_qua_phien_ban_hien_tai');
+                await exportToExcel(tempResults, 'Ket_qua_phien_ban_hien_tai');
               }}
-              className="px-4 py-2 bg-white border border-tactical-green text-tactical-green rounded-lg font-headline font-bold text-[10px] flex items-center gap-2 hover:bg-tactical-green hover:text-white transition-all"
+              disabled={isExporting}
+              className="px-4 py-2 bg-white border border-tactical-green text-tactical-green rounded-lg font-headline font-bold text-[10px] flex items-center gap-2 hover:bg-tactical-green hover:text-white transition-all disabled:opacity-50"
             >
-              <FileSpreadsheet className="w-4 h-4" />
+              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
               XUẤT EXCEL
             </button>
             <button 
