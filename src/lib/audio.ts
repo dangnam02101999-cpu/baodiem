@@ -1,22 +1,30 @@
 
 let audioCtx: AudioContext | null = null;
 let sharedAudio: HTMLAudioElement | null = null;
+let currentResolve: (() => void) | null = null;
 
 export const initAudio = () => {
-  // Initialize AudioContext for beeps and Gemini PCM playback
+  // Initialize AudioContext for beeps
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({
-      sampleRate: 24000 // Match Gemini TTS sample rate
+      sampleRate: 24000
     });
   }
+  
   if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
+    audioCtx.resume().catch(() => {});
   }
 
-  // Initialize shared Audio element for Proxy/WebSpeech fallback
+  // Initialize shared Audio element for TTS
   if (!sharedAudio) {
     sharedAudio = new Audio();
-    // Pre-play silent gap to unlock
+    sharedAudio.preload = "auto";
+  }
+  
+  // Every time initAudio is called (should be from a user gesture), 
+  // attempt a silent play to keep the browser authorization active
+  // But avoid interrupting if something is already playing
+  if (sharedAudio.src === "" || (sharedAudio.paused && sharedAudio.currentTime === 0)) {
     sharedAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA== ";
     sharedAudio.play().catch(() => {});
   }
@@ -24,9 +32,24 @@ export const initAudio = () => {
   return { audioCtx, sharedAudio };
 };
 
+export const stopTts = () => {
+  if (sharedAudio) {
+    sharedAudio.pause();
+    sharedAudio.currentTime = 0;
+    sharedAudio.src = "";
+    if (currentResolve) {
+      currentResolve();
+      currentResolve = null;
+    }
+  }
+};
+
 export const playTts = async (phrase: string): Promise<void> => {
   const { sharedAudio: audio } = initAudio();
   if (!audio) return;
+
+  // If there was a previous playback, stop it
+  stopTts();
 
   const cleanPhrase = phrase.trim().replace(/\s+/g, ' ');
 
@@ -49,10 +72,10 @@ export const playTts = async (phrase: string): Promise<void> => {
 
     if (result.url || result.async) {
       const audioUrl = result.url || result.async;
-      console.log("Playing FPT Audio (Shared):", audioUrl);
-
+      
       return new Promise((resolve) => {
-        // Use 'audio' (sharedAudio) which was unlocked during init
+        currentResolve = resolve;
+        
         audio.src = audioUrl;
         
         audio.onended = () => {
@@ -69,24 +92,27 @@ export const playTts = async (phrase: string): Promise<void> => {
         const cleanup = () => {
           audio.onended = null;
           audio.onerror = null;
+          currentResolve = null;
         };
 
-        audio.play().catch(err => {
-          console.warn("FPT play was blocked by browser:", err);
-          resolve();
-        });
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(err => {
+            console.warn("FPT play was blocked by browser:", err);
+            cleanup();
+            resolve();
+          });
+        }
 
         // Fail-safe timeout
         setTimeout(() => {
           cleanup();
           resolve();
-        }, 20000);
+        }, 15000);
       });
-    } else {
-      console.error("Lỗi từ FPT.AI:", result.message);
     }
   } catch (error) {
-    console.error("Lỗi gọi thẳng FPT:", error);
+    console.error("Lỗi gọi FPT:", error);
   }
 };
 

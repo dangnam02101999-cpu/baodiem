@@ -10,7 +10,7 @@ import { db, handleFirestoreError } from '../firebase';
 import { collection, onSnapshot, query, orderBy, getDocs, writeBatch, doc, deleteDoc, setDoc, addDoc } from 'firebase/firestore';
 import { OperationType } from '../types';
 
-import { playSafeSound, playDangerSound, initAudio, playTts } from '../lib/audio';
+import { playSafeSound, playDangerSound, initAudio, playTts, stopTts } from '../lib/audio';
 import { Target4 } from '../components/Target4';
 import { Target7 } from '../components/Target7';
 import { Target8 } from '../components/Target8';
@@ -152,10 +152,10 @@ export default function ClerkView() {
   const isSpeakingRef = useRef(false);
 
   const handleSpeakNames = async () => {
-    initAudio(); // Priming audio for mobile
+    initAudio(); 
     if (isSpeakingRef.current) {
       isSpeakingRef.current = false;
-      window.speechSynthesis.cancel();
+      stopTts();
       toast.dismiss();
       return;
     }
@@ -193,10 +193,10 @@ export default function ClerkView() {
   };
 
   const handleSpeakResults = async () => {
-    initAudio(); // Priming audio for mobile
+    initAudio(); 
     if (isSpeakingRef.current) {
       isSpeakingRef.current = false;
-      window.speechSynthesis.cancel();
+      stopTts();
       toast.dismiss();
       return;
     }
