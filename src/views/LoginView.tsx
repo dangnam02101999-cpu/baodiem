@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, User, Lock, QrCode, Fingerprint, Loader2 } from 'lucide-react';
+import { ShieldCheck, User, Lock, QrCode, Fingerprint, Loader2, Cpu } from 'lucide-react';
 import { motion } from 'motion/react';
 import { auth } from '../firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
@@ -69,6 +69,10 @@ export default function LoginView({ onLogin }: LoginViewProps) {
           <div className="flex items-center gap-2 bg-black/10 p-2 rounded-lg border border-white/5 min-w-[140px]">
             <ShieldCheck className="text-tactical-accent w-4 h-4" />
             <span className="text-[10px] font-bold text-tactical-accent uppercase leading-none">Mã hóa AES</span>
+          </div>
+          <div className="flex items-center gap-2 bg-black/10 p-2 rounded-lg border border-white/5 min-w-[140px]">
+            <Cpu className="text-tactical-accent w-4 h-4" />
+            <span className="text-[10px] font-bold text-tactical-accent uppercase leading-none">ESP32 SENSOR</span>
           </div>
           <div className="flex items-center gap-2 bg-black/10 p-2 rounded-lg border border-white/5 min-w-[140px]">
             <div className="w-4 h-4 border-2 border-tactical-accent rounded-full flex items-center justify-center">
@@ -178,6 +182,10 @@ export default function LoginView({ onLogin }: LoginViewProps) {
             </div>
             <div className="p-2 bg-[#eeeeee] rounded-lg opacity-60">
               <Fingerprint className="w-5 h-5" />
+            </div>
+            <div className="p-2 bg-[#eeeeee] rounded-lg opacity-60 flex items-center gap-1.5">
+              <Cpu className="w-5 h-5" />
+              <span className="text-[8px] font-black">ESP32</span>
             </div>
           </div>
         </div>

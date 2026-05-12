@@ -8,6 +8,7 @@ import ClerkView from './views/ClerkView';
 import ResultsView from './views/ResultsView';
 import ManagementView from './views/ManagementView';
 import CalibrationView from './views/CalibrationView';
+import ESP32View from './views/ESP32View';
 import { Role } from './types';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -83,6 +84,7 @@ export default function App() {
     else if (role === 'SECRETARY') setCurrentTab('CLERK');
     else if (role === 'VIEWER') setCurrentTab('RESULT');
     else if (role === 'CALIBRATION') setCurrentTab('CALIBRATION');
+    else if (role === 'ESP32') setCurrentTab('ESP32');
   };
 
   const renderContent = () => {
@@ -101,6 +103,8 @@ export default function App() {
         return <ManagementView />;
       case 'CALIBRATION':
         return <CalibrationView />;
+      case 'ESP32':
+        return <ESP32View />;
       default:
         return <LoginView onLogin={handleLogin} />;
     }
@@ -115,6 +119,7 @@ export default function App() {
       case 'RESULT': return 'KẾT QUẢ';
       case 'MANAGE': return 'QUẢN LÝ DANH SÁCH';
       case 'CALIBRATION': return 'BẮN HIỆU CHỈNH';
+      case 'ESP32': return 'HỆ THỐNG ESP32';
       default: return 'PHẦN MỀM BÁO BIA';
     }
   };
@@ -145,6 +150,8 @@ export default function App() {
             if (['RESULT'].includes(tab)) setCurrentTab(tab);
           } else if (selectedRole === 'CALIBRATION') {
             if (['CALIBRATION', 'RESULT'].includes(tab)) setCurrentTab(tab);
+          } else if (selectedRole === 'ESP32') {
+            if (['ESP32', 'RESULT'].includes(tab)) setCurrentTab(tab);
           } else {
             // No role selected yet (at ROLE screen)
             if (tab === 'ROLE') setCurrentTab(tab);

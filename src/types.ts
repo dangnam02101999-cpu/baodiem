@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type Role = 'ADMIN' | 'SECRETARY' | 'REPORTER' | 'VIEWER' | 'CALIBRATION';
+export type Role = 'ADMIN' | 'SECRETARY' | 'REPORTER' | 'VIEWER' | 'CALIBRATION' | 'ESP32';
 
 export interface Soldier {
   id: string;

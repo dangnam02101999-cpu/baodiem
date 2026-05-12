@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileEdit, Target, BarChart3, ChevronRight, Settings2 } from 'lucide-react';
+import { FileEdit, Target, BarChart3, ChevronRight, Settings2, Cpu } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Role } from '../types';
 
@@ -35,6 +35,13 @@ export default function RoleSelectionView({ onSelectRole }: RoleSelectionViewPro
       title: 'BẮN HIỆU CHỈNH', 
       level: 'Mức truy cập: Kỹ thuật', 
       icon: Settings2,
+      variant: 'outline'
+    },
+    { 
+      id: 'ESP32' as Role, 
+      title: 'THIẾT BỊ ESP32', 
+      level: 'Mức truy cập: Phần cứng', 
+      icon: Cpu,
       variant: 'outline'
     },
   ];
@@ -106,8 +113,8 @@ export default function RoleSelectionView({ onSelectRole }: RoleSelectionViewPro
             <span className="font-sans text-[10px] font-bold text-gray-400 uppercase tracking-widest">Giao thức ID</span>
             <span className="font-headline font-medium text-xs">V.04-DELTA-2024</span>
           </div>
-          <div className="text-right">
-            <span className="font-sans text-[10px] font-bold text-gray-400 uppercase tracking-widest">Trạng thái</span>
+          <div className="text-right flex flex-col items-end">
+            <span className="font-sans text-[10px] font-bold text-gray-400 uppercase tracking-widest">ESP32: Sẵn sàng</span>
             <span className="font-headline font-bold text-xs text-tactical-green flex items-center gap-1">
               <div className="w-2 h-2 bg-tactical-green rounded-full"></div>
               ĐƯỜNG TRUYỀN BẢO MẬT
