@@ -15,62 +15,73 @@ export default function ESP32View() {
   const [isLoading, setIsLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
-  const espCode = `// Logic: Tải theo lượt (1.mp3 là Lượt 1, 2.mp3 là Lượt 2...)
-// Kết nối HTTPS bảo mật tới Vercel
+  const espCode = `// Logic: Tải file từ Server và lưu vào SD Card (Tránh tràn RAM)
+// Phù hợp cho file dung lượng lớn hoặc khi không có PSRAM
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include "Audio.h" // Thư viện I2S Audio
+#include <SD.h>
+#include <FS.h>
+#include "Audio.h"
 
-#define MAX_TURNS 20
-uint8_t* turnAudioBuffers[MAX_TURNS]; 
-size_t audioSizes[MAX_TURNS];
+Audio audio;
 
-void downloadTurns(int totalTurns) {
-  for(int i=1; i <= totalTurns; i++) {
-    // Địa chỉ lưu trữ file trên Vercel của bạn
-    String url = "https://baodiem.vercel.app/audio/" + String(i) + ".mp3";
-    
-    WiFiClientSecure client;
-    client.setInsecure(); // Bỏ qua kiểm tra SSL Certificate để kết nối nhanh
-    
-    HTTPClient http;
-    http.begin(client, url); 
-    
-    Serial.printf("Dang tai Turn %d: %s\\n", i, url.c_str());
-    
-    int httpCode = http.GET();
-    if(httpCode == HTTP_CODE_OK) {
-      audioSizes[i] = http.getSize();
-      // Yêu cầu ESP32 có PSRAM (như ESP32-WROVER)
-      turnAudioBuffers[i] = (uint8_t*)ps_malloc(audioSizes[i]);
-      
-      if (turnAudioBuffers[i] != NULL) {
-        http.getStream().readBytes(turnAudioBuffers[i], audioSizes[i]);
-        Serial.printf("File %d.mp3 (Turn %d) -> RAM OK (%d bytes)\\n", i, i, audioSizes[i]);
-      } else {
-        Serial.println("Loi: Thieu bo nho RAM!");
-      }
-    } else {
-      Serial.printf("Loi tai file: %d\\n", httpCode);
+void downloadToSD(int turnIdx) {
+  String url = "https://baodiem.vercel.app/audio/" + String(turnIdx) + ".mp3";
+  String path = "/" + String(turnIdx) + ".mp3";
+  
+  WiFiClientSecure client;
+  client.setInsecure();
+  
+  HTTPClient http;
+  http.begin(client, url);
+  
+  int httpCode = http.GET();
+  if (httpCode == HTTP_CODE_OK) {
+    int totalSize = http.getSize();
+    File file = SD.open(path, FILE_WRITE);
+    if (!file) {
+      Serial.println("Loi: Khong the mo file tren SD!");
+      return;
     }
-    http.end();
+
+    WiFiClient* stream = http.getStreamPtr();
+    uint8_t buffer[1024];
+    int downloaded = 0;
+
+    while (http.connected() && (downloaded < totalSize || totalSize == -1)) {
+      size_t size = stream->available();
+      if (size) {
+        int c = stream->readBytes(buffer, ((size > sizeof(buffer)) ? sizeof(buffer) : size));
+        file.write(buffer, c);
+        downloaded += c;
+        if (downloaded % 10240 == 0) Serial.printf("Progress: %d bytes\\n", downloaded);
+      }
+      delay(1);
+    }
+    file.close();
+    Serial.printf("Turn %d synced to SD OK!\\n", turnIdx);
   }
+  http.end();
 }
 
-void playTurn(int turnIdx) {
-  if(turnIdx >= 1 && turnIdx < MAX_TURNS && turnAudioBuffers[turnIdx]) {
-    audio.playBuffer(turnAudioBuffers[turnIdx], audioSizes[turnIdx]);
-    Serial.printf("Dang phat am thanh Luot: %d\\n", turnIdx);
-  }
+void playFromSD(int turnIdx) {
+  String path = "/" + String(turnIdx) + ".mp3";
+  audio.connecttoFS(SD, path.c_str());
+  Serial.printf("Playing Turn %d from SD...\\n", turnIdx);
+}
+
+void setup() {
+  Serial.begin(115200);
+  if(!SD.begin()) Serial.println("SD Card Mount Failed");
+  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
 }
 
 void loop() {
-  // Logic nhan lenh tu Dashboard (Xử lý lệnh và turnIndex)
   if (receivedCmd == CMD_PLAY_TURN) {
-    playTurn(targetTurnIdx); 
+    playFromSD(targetTurnIdx); 
   }
-  audio.loop(); // Duy trì luồng âm thanh I2S
+  audio.loop();
 }`;
 
   const handleCopyCode = () => {
@@ -320,7 +331,7 @@ void loop() {
               </div>
               <div className="flex gap-2">
                 <button className="px-6 py-3 bg-tactical-accent text-[#1a1c1c] rounded-xl font-headline font-bold text-xs uppercase tracking-widest hover:opacity-90 transition-opacity shadow-lg shadow-tactical-accent/20">
-                  Đồng bộ lại toàn bộ
+                  Đồng bộ bộ nhớ (SD)
                 </button>
               </div>
             </div>
@@ -400,7 +411,7 @@ void loop() {
                                         <td className="px-3 py-3 text-right">
                                           {s ? (
                                             <span className="px-2 py-0.5 bg-tactical-green/20 border border-tactical-green/30 text-tactical-green rounded text-[8px] font-black uppercase">
-                                              Ready
+                                              Saved
                                             </span>
                                           ) : '-'}
                                         </td>
@@ -423,7 +434,7 @@ void loop() {
                 <div className="p-4 bg-white/5 border-b border-white/10 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-white">
                     <Radio className="w-4 h-4 text-tactical-accent" />
-                    <h3 className="font-headline font-bold text-xs tracking-widest uppercase">Mã nguồn ESP32 (RAM Load Audio)</h3>
+                    <h3 className="font-headline font-bold text-xs tracking-widest uppercase">Mã nguồn ESP32 (SD Sync Logic)</h3>
                   </div>
                   <button 
                     onClick={handleCopyCode}
