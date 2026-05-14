@@ -44,13 +44,7 @@ export const stopTts = () => {
   }
 };
 
-export const playTts = async (phrase: string): Promise<void> => {
-  const { sharedAudio: audio } = initAudio();
-  if (!audio) return;
-
-  // If there was a previous playback, stop it
-  stopTts();
-
+export const fetchTtsUrl = async (phrase: string): Promise<string | null> => {
   const cleanPhrase = phrase.trim().replace(/\s+/g, ' ');
 
   try {
@@ -69,51 +63,60 @@ export const playTts = async (phrase: string): Promise<void> => {
     }
 
     const result = await response.json();
-
-    if (result.url || result.async) {
-      const audioUrl = result.url || result.async;
-      
-      return new Promise((resolve) => {
-        currentResolve = resolve;
-        
-        audio.src = audioUrl;
-        
-        audio.onended = () => {
-          cleanup();
-          resolve();
-        };
-
-        audio.onerror = (e) => {
-          console.error("FPT Audio Playback Error:", e);
-          cleanup();
-          resolve();
-        };
-
-        const cleanup = () => {
-          audio.onended = null;
-          audio.onerror = null;
-          currentResolve = null;
-        };
-
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(err => {
-            console.warn("FPT play was blocked by browser:", err);
-            cleanup();
-            resolve();
-          });
-        }
-
-        // Fail-safe timeout
-        setTimeout(() => {
-          cleanup();
-          resolve();
-        }, 15000);
-      });
-    }
+    return result.url || result.async || null;
   } catch (error) {
     console.error("Lỗi gọi FPT:", error);
+    return null;
   }
+};
+
+export const playTts = async (phrase: string): Promise<void> => {
+  const { sharedAudio: audio } = initAudio();
+  if (!audio) return;
+
+  // If there was a previous playback, stop it
+  stopTts();
+
+  const audioUrl = await fetchTtsUrl(phrase);
+  if (!audioUrl) return;
+
+  return new Promise((resolve) => {
+    currentResolve = resolve;
+    
+    audio.src = audioUrl;
+    
+    audio.onended = () => {
+      cleanup();
+      resolve();
+    };
+
+    audio.onerror = (e) => {
+      console.error("FPT Audio Playback Error:", e);
+      cleanup();
+      resolve();
+    };
+
+    const cleanup = () => {
+      audio.onended = null;
+      audio.onerror = null;
+      currentResolve = null;
+    };
+
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(err => {
+        console.warn("FPT play was blocked by browser:", err);
+        cleanup();
+        resolve();
+      });
+    }
+
+    // Fail-safe timeout
+    setTimeout(() => {
+      cleanup();
+      resolve();
+    }, 15000);
+  });
 };
 
 export const playSafeSound = async () => {
