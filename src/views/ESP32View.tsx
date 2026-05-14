@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, Wifi, Battery, Activity, HardDrive, RefreshCw, Send, Volume2, History, Radio, Loader2, Download, Cloud } from 'lucide-react';
+import { Cpu, Wifi, Battery, Activity, HardDrive, RefreshCw, Send, Volume2, History, Radio, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, handleFirestoreError } from '../firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { OperationType } from '../types';
-import { playTts, initAudio, fetchTtsUrl } from '../lib/audio';
-import { uploadAudioToSupabase } from '../lib/supabase';
-import toast from 'react-hot-toast';
+import { playTts, initAudio } from '../lib/audio';
 
 type ESPTab = 'POINTS' | 'AUDIO';
 
@@ -15,89 +13,6 @@ export default function ESP32View() {
   const [results, setResults] = useState<any[]>([]);
   const [shootingQueue, setShootingQueue] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
-  const [isSyncing, setIsSyncing] = useState<number | null>(null);
-
-  const espCode = `// Logic: Đồng bộ âm thanh từ Supabase Storage về thẻ nhớ SD (Phát ngoại tuyến)
-// URL_DU_AN: https://[ID_DU_AN].supabase.co
-// MA_API: sb_publishable_kS9DsldrjUUrcDrCiQEbig_k2WHVBoe
-
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <HTTPClient.h>
-#include <SD.h>
-#include <FS.h>
-#include "Audio.h"
-
-Audio audio;
-
-void syncAudioFromCloud(String downloadUrl, int turnIdx) {
-  String fileName = "/" + String(turnIdx) + ".mp3";
-  WiFiClientSecure client;
-  client.setInsecure(); 
-  
-  HTTPClient http;
-  if (http.begin(client, downloadUrl)) {
-    int httpCode = http.GET();
-    if (httpCode == HTTP_CODE_OK) {
-      File file = SD.open(fileName, FILE_WRITE);
-      if (!file) return;
-
-      WiFiClient* stream = http.getStreamPtr();
-      uint8_t buffer[1024];
-      int downloaded = 0;
-      int totalSize = http.getSize();
-
-      while (http.connected() && (downloaded < totalSize || totalSize == -1)) {
-        size_t availableSize = stream->available();
-        if (availableSize) {
-          int readSize = stream->readBytes(buffer, ((availableSize > sizeof(buffer)) ? sizeof(buffer) : availableSize));
-          file.write(buffer, readSize);
-          downloaded += readSize;
-        }
-        delay(1);
-      }
-      file.close();
-      Serial.printf("Lượt %d đã được cập nhật từ Supabase!\\n", turnIdx);
-    }
-    http.end();
-  }
-}
-
-void playCurrentTurn(int turnIdx) {
-  String path = "/" + String(turnIdx) + ".mp3";
-  if (SD.exists(path)) {
-    audio.connecttoFS(SD, path.c_str());
-    Serial.printf("Đang phát ngoại tuyến: %s\\n", path.c_str());
-  } else {
-    Serial.println("Không tìm thấy file trên SD. Vui lòng đồng bộ trước!");
-  }
-}
-
-void setup() {
-  Serial.begin(115200);
-  if(!SD.begin(5)) Serial.println("Gắn thẻ SD thất bại!");
-  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
-}
-
-void loop() {
-  // Nhận lệnh CMD_SYNC_AUDIO và receivedUrl từ Dashboard
-  if (receivedCmd == CMD_SYNC_AUDIO) {
-    syncAudioFromCloud(receivedUrl, targetTurnIdx);
-  }
-  
-  if (receivedCmd == CMD_PLAY_TURN) {
-    playCurrentTurn(targetTurnIdx);
-  }
-  
-  audio.loop(); 
-}`;
-
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(espCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   useEffect(() => {
     // Synchronize with the shooting results for the POINTS tab
@@ -135,45 +50,6 @@ void loop() {
       }
     });
     await playTts(phrase);
-  };
-
-  const handleDownloadTurn = async (turnIdx: number, chunk: any[]) => {
-    const phrase = `Lượt bắn thứ ${turnIdx + 1}. ` + chunk
-      .map((s, i) => s && s.name ? `Dải ${i + 1}: ${s.name}. ` : '')
-      .join('');
-    
-    const url = await fetchTtsUrl(phrase);
-
-    if (url) {
-      window.open(url, '_blank');
-    } else {
-      toast.error("Không thể tạo file âm thanh!");
-    }
-  };
-
-  const handleSyncToSupabase = async (turnIdx: number, chunk: any[]) => {
-    setIsSyncing(turnIdx);
-    const phrase = `Lượt bắn thứ ${turnIdx + 1}. ` + chunk
-      .map((s, i) => s && s.name ? `Dải ${i + 1}: ${s.name}. ` : '')
-      .join('');
-    
-    try {
-      const url = await fetchTtsUrl(phrase);
-      if (!url) throw new Error("Không thể lấy URL từ FPT AI");
-
-      const fileName = `${turnIdx + 1}.mp3`;
-      const publicUrl = await uploadAudioToSupabase(url, fileName);
-
-      if (publicUrl) {
-        toast.success(`Đã đồng bộ Lượt ${turnIdx + 1}`);
-        console.log("Supabase URL:", publicUrl);
-      }
-    } catch (error: any) {
-      console.error(error);
-      toast.error(error.message || "Lỗi đồng bộ không xác định!");
-    } finally {
-      setIsSyncing(null);
-    }
   };
 
   const sensors = [
@@ -379,7 +255,7 @@ void loop() {
               </div>
               <div className="flex gap-2">
                 <button className="px-6 py-3 bg-tactical-accent text-[#1a1c1c] rounded-xl font-headline font-bold text-xs uppercase tracking-widest hover:opacity-90 transition-opacity shadow-lg shadow-tactical-accent/20">
-                  Đồng bộ bộ nhớ (SD)
+                  Đồng bộ lại toàn bộ
                 </button>
               </div>
             </div>
@@ -426,30 +302,13 @@ void loop() {
                                   </span>
                                   <div className="h-px bg-white/10 flex-1" />
                                 </div>
-                                  <div className="flex items-center gap-2">
-                                    <button 
-                                      onClick={() => handlePreviewTurn(turnIdx, chunk)}
-                                      className="flex items-center gap-1.5 px-3 py-1 bg-tactical-accent/20 border border-tactical-accent/30 rounded text-[9px] font-black text-tactical-accent hover:bg-tactical-accent hover:text-black transition-all"
-                                    >
-                                      <Volume2 className="w-3 h-3" />
-                                      PHÁT THỬ LƯỢT ({turnIdx + 1}.mp3)
-                                    </button>
-                                    <button 
-                                      onClick={() => handleSyncToSupabase(turnIdx, chunk)}
-                                      disabled={isSyncing === turnIdx}
-                                      className="p-1 px-2 bg-tactical-accent/10 border border-tactical-accent/30 rounded text-tactical-accent hover:bg-tactical-accent hover:text-[#1a1c1c] transition-all disabled:opacity-50"
-                                      title="Đồng bộ lên Cloud Supabase"
-                                    >
-                                      {isSyncing === turnIdx ? <Loader2 className="w-3 h-3 animate-spin" /> : <Cloud className="w-3 h-3" />}
-                                    </button>
-                                    <button 
-                                      onClick={() => handleDownloadTurn(turnIdx, chunk)}
-                                      className="p-1 px-2 bg-white/5 border border-white/10 rounded text-gray-400 hover:text-tactical-accent hover:border-tactical-accent transition-all"
-                                      title="Tải về máy"
-                                    >
-                                      <Download className="w-3 h-3" />
-                                    </button>
-                                  </div>
+                                <button 
+                                  onClick={() => handlePreviewTurn(turnIdx, chunk)}
+                                  className="ml-4 flex items-center gap-1.5 px-3 py-1 bg-tactical-accent/20 border border-tactical-accent/30 rounded text-[9px] font-black text-tactical-accent hover:bg-tactical-accent hover:text-black transition-all"
+                                >
+                                  <Volume2 className="w-3 h-3" />
+                                  GỌI TÊN TOÀN LƯỢT ({turnIdx + 1}.mp3)
+                                </button>
                               </div>
                               
                               <table className="w-full text-left text-[11px] border-collapse bg-white/[0.02] rounded-lg overflow-hidden border border-white/5">
@@ -476,7 +335,7 @@ void loop() {
                                         <td className="px-3 py-3 text-right">
                                           {s ? (
                                             <span className="px-2 py-0.5 bg-tactical-green/20 border border-tactical-green/30 text-tactical-green rounded text-[8px] font-black uppercase">
-                                              ĐÃ LƯU
+                                              Ready
                                             </span>
                                           ) : '-'}
                                         </td>
@@ -499,19 +358,50 @@ void loop() {
                 <div className="p-4 bg-white/5 border-b border-white/10 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-white">
                     <Radio className="w-4 h-4 text-tactical-accent" />
-                    <h3 className="font-headline font-bold text-xs tracking-widest uppercase">Mã nguồn ESP32 (Đồng bộ SD Card)</h3>
+                    <h3 className="font-headline font-bold text-xs tracking-widest uppercase">Mã nguồn ESP32 (RAM Load Audio)</h3>
                   </div>
-                  <button 
-                    onClick={handleCopyCode}
-                    className={`text-[10px] font-black uppercase transition-colors ${copied ? 'text-tactical-green' : 'text-tactical-accent hover:underline'}`}
-                  >
-                    {copied ? 'ĐÃ SAO CHÉP!' : 'SAO CHÉP MÃ'}
-                  </button>
+                  <button className="text-[10px] font-black text-tactical-accent hover:underline uppercase">Copy Code</button>
                 </div>
                 <div className="flex-1 bg-black p-4 overflow-x-auto">
                   <pre className="text-[10px] font-mono text-gray-400 leading-relaxed">
                     <code className="block">
-                      {espCode}
+{`// Logic: Tải theo lượt (1.mp3 là Lượt 1, 2.mp3 là Lượt 2...)
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include "Audio.h"
+
+#define MAX_TURNS 20
+uint8_t* turnAudioBuffers[MAX_TURNS]; 
+size_t audioSizes[MAX_TURNS];
+
+void downloadTurns(int totalTurns) {
+  for(int i=1; i <= totalTurns; i++) {
+    // Tải file gộp của từng lượt: 1.mp3, 2.mp3...
+    String url = "https://server.mil/audio/" + String(i) + ".mp3";
+    HTTPClient http;
+    http.begin(url);
+    if(http.GET() == HTTP_CODE_OK) {
+      audioSizes[i] = http.getSize();
+      turnAudioBuffers[i] = (uint8_t*)ps_malloc(audioSizes[i]);
+      http.getStream().readBytes(turnAudioBuffers[i], audioSizes[i]);
+      Serial.printf("File %d.mp3 (Turn %d) -> RAM OK\\n", i, i);
+    }
+    http.end();
+  }
+}
+
+void playTurn(int turnIdx) {
+  if(turnAudioBuffers[turnIdx]) {
+    audio.playBuffer(turnAudioBuffers[turnIdx], audioSizes[turnIdx]);
+  }
+}
+
+void loop() {
+  if (receivedCmd == CMD_PLAY_TURN) {
+    playTurn(targetTurnIdx); 
+  }
+  audio.loop();
+}`}
                     </code>
                   </pre>
                 </div>
