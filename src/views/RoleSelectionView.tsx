@@ -2,12 +2,18 @@ import React from 'react';
 import { FileEdit, Target, BarChart3, ChevronRight, Settings2, Cpu } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Role } from '../types';
+import { initAudio } from '../lib/audio';
 
 interface RoleSelectionViewProps {
   onSelectRole: (role: Role) => void;
 }
 
 export default function RoleSelectionView({ onSelectRole }: RoleSelectionViewProps) {
+  const handleSelectRole = (role: Role) => {
+    initAudio();
+    onSelectRole(role);
+  };
+
   const roles = [
     { 
       id: 'SECRETARY' as Role, 
@@ -77,7 +83,7 @@ export default function RoleSelectionView({ onSelectRole }: RoleSelectionViewPro
               initial={{ x: -20, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.2 + index * 0.1 }}
-              onClick={() => onSelectRole(role.id)}
+              onClick={() => handleSelectRole(role.id)}
               className={role.variant === 'outline' 
                 ? "group relative flex items-center justify-between w-full h-24 px-8 bg-[#e8e8e8] border-2 border-tactical-green/10 text-tactical-green rounded-md active:scale-95 transition-all duration-75 overflow-hidden"
                 : `group relative flex items-center justify-between w-full h-24 px-8 bg-gradient-to-r ${role.gradient} text-tactical-accent rounded-md shadow-lg active:scale-95 transition-all duration-75 overflow-hidden`

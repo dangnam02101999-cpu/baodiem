@@ -60,9 +60,9 @@ export default function Layout({ children, title, activeTab, onTabChange, showNa
           )}
           <div className="w-8 h-8 rounded-full bg-tactical-green-light overflow-hidden border border-tactical-accent/30">
             <img 
-              alt="Profile" 
+              alt="Vietnam Flag" 
               className="w-full h-full object-cover" 
-              src="https://picsum.photos/seed/soldier/100/100"
+              src="https://flagcdn.com/w160/vn.png"
               referrerPolicy="no-referrer"
             />
           </div>

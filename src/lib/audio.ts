@@ -36,7 +36,7 @@ export const stopTts = () => {
   if (sharedAudio) {
     sharedAudio.pause();
     sharedAudio.currentTime = 0;
-    sharedAudio.src = "";
+    sharedAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA== ";
     if (currentResolve) {
       currentResolve();
       currentResolve = null;
@@ -48,10 +48,16 @@ export const playTts = async (phrase: string): Promise<void> => {
   const { sharedAudio: audio } = initAudio();
   if (!audio) return;
 
-  // If there was a previous playback, stop it
+  // Stop previous
   stopTts();
 
   const cleanPhrase = phrase.trim().replace(/\s+/g, ' ');
+
+  // Immediate "unlock" playback for the current interaction context
+  // This keeps the user gesture active for when the fetch finishes
+  try {
+    audio.play().catch(() => {});
+  } catch (e) {}
 
   try {
     const response = await fetch("https://api.fpt.ai/hmi/tts/v5", {
@@ -73,20 +79,44 @@ export const playTts = async (phrase: string): Promise<void> => {
     if (result.url || result.async) {
       const audioUrl = result.url || result.async;
       
+      // If it's a new URL, we might need to wait for FPT to generate it
+      // The "no supported source" error often means the URL returned 404 because it's still generating
+      
       return new Promise((resolve) => {
+        let retryCount = 0;
+        const maxRetries = 10;
+        
         currentResolve = resolve;
         
-        audio.src = audioUrl;
-        
-        audio.onended = () => {
-          cleanup();
-          resolve();
-        };
+        const tryPlay = () => {
+          audio.src = audioUrl;
+          
+          audio.onended = () => {
+            cleanup();
+            resolve();
+          };
 
-        audio.onerror = (e) => {
-          console.error("FPT Audio Playback Error:", e);
-          cleanup();
-          resolve();
+          audio.onerror = (e) => {
+            if (retryCount < maxRetries) {
+              retryCount++;
+              console.warn(`Audio load failed, retrying (${retryCount}/${maxRetries})...`);
+              setTimeout(tryPlay, 1000); // Wait 1s and try again
+            } else {
+              console.error("FPT Audio Playback Error after retries:", e);
+              cleanup();
+              resolve();
+            }
+          };
+
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(err => {
+              // Only fail if it's not a "loading" error (which is handled by onerror)
+              if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
+                console.warn("Play promise error:", err);
+              }
+            });
+          }
         };
 
         const cleanup = () => {
@@ -95,20 +125,13 @@ export const playTts = async (phrase: string): Promise<void> => {
           currentResolve = null;
         };
 
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(err => {
-            console.warn("FPT play was blocked by browser:", err);
-            cleanup();
-            resolve();
-          });
-        }
+        tryPlay();
 
-        // Fail-safe timeout
+        // Fail-safe global timeout
         setTimeout(() => {
           cleanup();
           resolve();
-        }, 15000);
+        }, 30000); // 30s limit
       });
     }
   } catch (error) {
