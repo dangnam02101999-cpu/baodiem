@@ -62,7 +62,7 @@ export default function RoleSelectionView({ onSelectRole }: RoleSelectionViewPro
             animate={{ opacity: 1 }}
             className="font-headline text-tactical-green font-black tracking-widest text-sm bg-tactical-accent px-3 py-1 rounded-sm uppercase"
           >
-            TRUNG TÂM CHỈ HUY ALPHA
+            ĐỔI MỚI - SÁNG TẠO
           </motion.span>
           <motion.h2 
             initial={{ y: 20, opacity: 0 }}

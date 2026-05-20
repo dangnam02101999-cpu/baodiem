@@ -158,7 +158,7 @@ export default function App() {
           }
         }
       }}
-      showNav={isLoggedIn && currentTab !== 'ROLE'}
+      showNav={isLoggedIn && currentTab !== 'ROLE' && currentTab !== 'ESP32'}
       userRole={userRole}
       selectedRole={selectedRole}
       onLogout={handleLogout}

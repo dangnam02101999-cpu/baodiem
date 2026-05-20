@@ -49,7 +49,7 @@ export default function Layout({ children, title, activeTab, onTabChange, showNa
           </h1>
         </div>
         <div className="flex items-center gap-3">
-          {showNav && (
+          {(showNav || activeTab === 'ESP32') && onLogout && (
             <button 
               onClick={onLogout}
               className="flex items-center gap-1 bg-tactical-danger/20 hover:bg-tactical-danger/40 text-tactical-accent px-2 py-1 rounded text-[10px] font-black transition-colors border border-tactical-danger/30"
@@ -70,7 +70,7 @@ export default function Layout({ children, title, activeTab, onTabChange, showNa
       </header>
 
       {/* Main Content */}
-      <main className="flex-grow flex flex-col relative pb-24">
+      <main className={cn("flex-grow flex flex-col relative", showNav ? "pb-24" : "pb-6")}>
         <div className="absolute inset-0 military-grid pointer-events-none"></div>
         {children}
       </main>
