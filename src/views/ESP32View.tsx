@@ -195,50 +195,76 @@ export default function ESP32View() {
         if (!row || row.length === 0) continue;
 
         const cleanedRow = row.map(v => v.trim());
-        const nameVal = indexName !== -1 && indexName < cleanedRow.length ? cleanedRow[indexName] : cleanedRow[1];
-        
-        // Skip header matching or empty rows
-        if (!nameVal || nameVal === '' || nameVal === 'Họ và tên' || nameVal.toLowerCase().includes('họ tên') || nameVal.toLowerCase().includes('vdv')) {
-          continue;
-        }
 
+        // Find STT or fallback to sequence number
         const sttValStr = indexSTT !== -1 && indexSTT < cleanedRow.length ? cleanedRow[indexSTT] : cleanedRow[0];
         const sttVal = parseInt(sttValStr) || (mappedEmployees.length + 1);
 
-        const rankVal = indexRank !== -1 && indexRank < cleanedRow.length ? cleanedRow[indexRank] : (cleanedRow[2] || '---');
-        const posVal = indexPosition !== -1 && indexPosition < cleanedRow.length ? cleanedRow[indexPosition] : (cleanedRow[3] || '---');
-        const unitVal = indexUnit !== -1 && indexUnit < cleanedRow.length ? cleanedRow[indexUnit] : (cleanedRow[4] || '---');
-        const laneVal = indexLane !== -1 && indexLane < cleanedRow.length ? cleanedRow[indexLane] : ((mappedEmployees.length % 8) + 1);
+        const laneValStr = indexLane !== -1 && indexLane < cleanedRow.length ? cleanedRow[indexLane] : '';
+        const laneVal = laneValStr ? (parseInt(laneValStr.replace(/[^0-9]/g, '')) || ((mappedEmployees.length % 8) + 1)) : ((mappedEmployees.length % 8) + 1);
         
-        const b4Val = indexBia4 !== -1 && indexBia4 < cleanedRow.length ? cleanedRow[indexBia4] : (cleanedRow[6] || '-/-/-');
-        const b7Val = indexBia7 !== -1 && indexBia7 < cleanedRow.length ? cleanedRow[indexBia7] : (cleanedRow[7] || '-/-/-');
-        const b8Val = indexBia8 !== -1 && indexBia8 < cleanedRow.length ? cleanedRow[indexBia8] : (cleanedRow[8] || '-/-/-');
-
-        const totalValStr = indexTotal !== -1 && indexTotal < cleanedRow.length ? cleanedRow[indexTotal] : cleanedRow[9];
-        const totalVal = totalValStr ? (parseInt(totalValStr) || 0) : (parseNumValue(b4Val) + parseNumValue(b7Val) + parseNumValue(b8Val));
+        const b4Val = indexBia4 !== -1 && indexBia4 < cleanedRow.length ? cleanedRow[indexBia4] : '-/-/-';
+        const b7Val = indexBia7 !== -1 && indexBia7 < cleanedRow.length ? cleanedRow[indexBia7] : '-/-/-';
+        const b8Val = indexBia8 !== -1 && indexBia8 < cleanedRow.length ? cleanedRow[indexBia8] : '-/-/-';
 
         mappedEmployees.push({
           stt: sttVal,
-          name: nameVal,
-          rank: rankVal,
-          position: posVal,
-          unit: unitVal,
           lane: laneVal,
           target4: b4Val,
           target7: b7Val,
           target8: b8Val,
-          total: totalVal
         });
       }
 
       if (mappedEmployees.length === 0) {
-        throw new Error('Không thể phân tích dữ liệu nào từ Google Sheet. Hãy kiểm tra lại cột "Họ và tên" hoặc cấu trúc dữ liệu.');
+        throw new Error('Không thể phân tích dữ liệu nào từ Google Sheet.');
       }
 
-      // Sort by STT to make sure it follows standard sequence perfectly
-      mappedEmployees.sort((a, b) => a.stt - b.stt);
+      // Map the imported scores onto the existing admin-entered queue:
+      const mergedData = shootingQueue.map((soldier, idx) => {
+        const targetSTT = idx + 1;
+        // Search parsed Google Sheet rows for a matching STT, or fall back to sequence index idx
+        const sheetMatch = mappedEmployees.find(e => e.stt === targetSTT) || mappedEmployees[idx];
 
-      setImportedData(mappedEmployees);
+        if (sheetMatch) {
+          const t4 = parseNumValue(sheetMatch.target4);
+          const t7 = parseNumValue(sheetMatch.target7);
+          const t8 = parseNumValue(sheetMatch.target8);
+          // Total is strictly calculated offline, NOT synchronized from the Google Sheet
+          const totalVal = t4 + t7 + t8;
+          // Classification is strictly computed based on calculated total
+          const classificationVal = totalVal > 0 ? getClassification(totalVal) : '---';
+
+          return {
+            ...soldier,
+            stt: targetSTT,
+            lane: sheetMatch.lane || soldier.lane || ((idx % 8) + 1),
+            target4: sheetMatch.target4 || '-/-/-',
+            target7: sheetMatch.target7 || '-/-/-',
+            target8: sheetMatch.target8 || '-/-/-',
+            total: totalVal,
+            classification: classificationVal
+          };
+        } else {
+          // If no sheet matches, keep default/current scores
+          const lane = soldier.lane || ((idx % 8) + 1);
+          const turnIdx = Math.floor(idx / 8);
+          const scores = getSoldierScores(soldier, lane, turnIdx);
+
+          return {
+            ...soldier,
+            stt: targetSTT,
+            lane: lane,
+            target4: scores.target4,
+            target7: scores.target7,
+            target8: scores.target8,
+            total: scores.total,
+            classification: scores.classification
+          };
+        }
+      });
+
+      setImportedData(mergedData);
       setSheetSuccess(true);
     } catch (err: any) {
       console.error(err);
@@ -693,6 +719,7 @@ export default function ESP32View() {
                         <th className="py-3 px-3 text-center">Bia số 7</th>
                         <th className="py-3 px-3 text-center">Bia số 8</th>
                         <th className="py-3 px-3 text-center bg-tactical-green/5 text-tactical-green">Tổng điểm</th>
+                        <th className="py-3 px-3 text-center">Xếp loại</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -722,6 +749,17 @@ export default function ESP32View() {
                               <td className="py-3 px-3 text-center font-mono font-bold text-gray-800">{item.target7}</td>
                               <td className="py-3 px-3 text-center font-mono font-bold text-gray-800">{item.target8}</td>
                               <td className="py-3 px-3 text-center font-black text-tactical-green bg-tactical-green/5 text-sm">{item.total}</td>
+                              <td className="py-3 px-3 text-center">
+                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider text-center ${
+                                  item.classification === 'Giỏi' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                                  item.classification === 'Khá' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                                  item.classification === 'Đạt' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                                  item.classification === 'Không đạt' ? 'bg-red-100 text-red-800 border border-red-200' :
+                                  'bg-gray-100 text-gray-400'
+                                }`}>
+                                  {item.classification || '---'}
+                                </span>
+                              </td>
                             </tr>
                           );
                         }
@@ -757,6 +795,17 @@ export default function ESP32View() {
                             <td className="py-3 px-3 text-center font-mono font-bold text-gray-700">{scores.target7}</td>
                             <td className="py-3 px-3 text-center font-mono font-bold text-gray-700">{scores.target8}</td>
                             <td className="py-3 px-3 text-center font-black text-tactical-green bg-tactical-green/5 text-sm">{scores.total}</td>
+                            <td className="py-3 px-3 text-center">
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider text-center ${
+                                scores.classification === 'Giỏi' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                                scores.classification === 'Khá' ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                                scores.classification === 'Đạt' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                                scores.classification === 'Không đạt' ? 'bg-red-100 text-red-800 border border-red-200' :
+                                'bg-gray-100 text-gray-400'
+                              }`}>
+                                {scores.classification}
+                              </span>
+                            </td>
                           </tr>
                         );
                       })}
