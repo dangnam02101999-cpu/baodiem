@@ -3,7 +3,7 @@ import { Cpu, RefreshCw, Send, Volume2, History, Radio, Loader2, FileSpreadsheet
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, Legend, PieChart, Pie } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, handleFirestoreError } from '../firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
 import { OperationType } from '../types';
 import { playTts, initAudio } from '../lib/audio';
 import { MOCK_SOLDIERS } from '../constants';
@@ -72,6 +72,13 @@ export default function ESP32View() {
   const [isSyncingSheet, setIsSyncingSheet] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [sheetSuccess, setSheetSuccess] = useState(false);
+
+  // Session saving states
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [sessionSaveName, setSessionSaveName] = useState('');
+  const [isSavingSession, setIsSavingSession] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleSyncGoogleSheet = async () => {
     if (!sheetUrl) {
@@ -273,6 +280,32 @@ export default function ESP32View() {
       setIsSyncingSheet(false);
     }
   };
+
+  // Keep a reference to the latest sync function to avoid stale closures in setInterval
+  const syncFnRef = React.useRef(handleSyncGoogleSheet);
+  useEffect(() => {
+    syncFnRef.current = handleSyncGoogleSheet;
+  });
+
+  // Trigger automatic sync every 10 seconds if sheet URL is provided
+  useEffect(() => {
+    if (!sheetUrl) return;
+
+    const trimmed = sheetUrl.trim();
+    const isValid = trimmed.startsWith('http') && (
+      trimmed.includes('docs.google.com/spreadsheets') ||
+      trimmed.includes('/pub') ||
+      trimmed.includes('output=csv')
+    );
+
+    if (!isValid) return;
+
+    const intervalId = setInterval(() => {
+      syncFnRef.current();
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [sheetUrl]);
 
   useEffect(() => {
     // Synchronize with raw real-time target hits
@@ -497,6 +530,136 @@ export default function ESP32View() {
     };
   };
 
+  const getCompleteResultsList = () => {
+    const list = importedData || shootingQueue;
+    return list.map((soldier, idx) => {
+      const stt = idx + 1;
+      let lane = (idx % 8) + 1;
+      let t4 = '-/-/-';
+      let t7 = '-/-/-';
+      let t8 = '-/-/-';
+      let totalValue = 0;
+      let classificationVal = '---';
+
+      if (importedData) {
+        t4 = soldier.target4 || '-/-/-';
+        t7 = soldier.target7 || '-/-/-';
+        t8 = soldier.target8 || '-/-/-';
+        totalValue = soldier.total ?? 0;
+        classificationVal = soldier.classification || '---';
+        lane = Number(soldier.lane) || lane;
+      } else {
+        const turnIdx = Math.floor(idx / 8);
+        const scores = getSoldierScores(soldier, lane, turnIdx);
+        t4 = scores.target4;
+        t7 = scores.target7;
+        t8 = scores.target8;
+        totalValue = scores.total;
+        classificationVal = scores.classification;
+      }
+
+      return {
+        id: soldier.id || `member-${idx}`,
+        name: soldier.name || `Quân nhân STT ${stt}`,
+        rank: soldier.rank || '---',
+        position: soldier.position || '---',
+        unit: soldier.unit || '---',
+        lane,
+        scores: {
+          target4: t4,
+          target7: t7,
+          target8: t8
+        },
+        total: totalValue,
+        classification: classificationVal,
+        timestamp: new Date().toISOString()
+      };
+    });
+  };
+
+  const handleSaveToHistory = async () => {
+    if (!sessionSaveName.trim()) {
+      setSaveError('Vui lòng nhập tên phiên bắn!');
+      return;
+    }
+
+    setIsSavingSession(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+
+    try {
+      const resultsList = getCompleteResultsList();
+      if (resultsList.length === 0) {
+        throw new Error('Không có kết quả nào để lưu!');
+      }
+
+      const totalVal = resultsList.length;
+      const avgScoreVal = (resultsList.reduce((acc, r) => acc + r.total, 0) / totalVal).toFixed(2);
+
+      await addDoc(collection(db, 'shooting_history'), {
+        name: sessionSaveName.trim(),
+        results: resultsList,
+        timestamp: Date.now(),
+        totalSoldiers: totalVal,
+        averageScore: avgScoreVal
+      });
+
+      setSaveSuccess(true);
+      setSessionSaveName('');
+      setTimeout(() => {
+        setShowSaveModal(false);
+        setSaveSuccess(false);
+      }, 1500);
+    } catch (err: any) {
+      console.error(err);
+      setSaveError(err.message || 'Đã xảy ra lỗi không thể lưu phiên bắn.');
+    } finally {
+      setIsSavingSession(false);
+    }
+  };
+
+  const handleExportToExcel = () => {
+    try {
+      const resultsList = getCompleteResultsList();
+      if (resultsList.length === 0) {
+        alert('Không có dữ liệu để xuất!');
+        return;
+      }
+
+      // Create CSV Headers and Rows
+      const headers = ['STT', 'Họ và tên', 'Cấp bậc', 'Chức vụ', 'Đơn vị', 'Dải bắn', 'Bia số 4', 'Bia số 7', 'Bia số 8', 'Tổng điểm', 'Xếp loại'];
+      const rows = resultsList.map((r, idx) => [
+        idx + 1,
+        `"${r.name.replace(/"/g, '""')}"`,
+        `"${r.rank.replace(/"/g, '""')}"`,
+        `"${r.position.replace(/"/g, '""')}"`,
+        `"${r.unit.replace(/"/g, '""')}"`,
+        `"Dải ${r.lane}"`,
+        `"${r.scores.target4}"`,
+        `"${r.scores.target7}"`,
+        `"${r.scores.target8}"`,
+        r.total,
+        `"${r.classification}"`
+      ]);
+
+      const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      
+      const safeDate = new Date().toISOString().slice(0, 10);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `ket_qua_doi_soat_ban_${safeDate}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error(err);
+      alert('Đã xảy ra lỗi khi xuất file Excel.');
+    }
+  };
+
   // Turn shootingQueue into chunks of 8 (8 lanes per round)
   const chunks = [];
   for (let i = 0; i < shootingQueue.length; i += 8) {
@@ -508,7 +671,7 @@ export default function ESP32View() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Title Header */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-gray-200 pb-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 pb-4">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-tactical-green/10 rounded-xl">
             <Cpu className="text-tactical-green w-6 h-6" />
@@ -517,6 +680,29 @@ export default function ESP32View() {
             <h1 className="font-headline font-black text-xl text-gray-900 uppercase">Đối soát gửi điểm & gọi tên (ESP32)</h1>
             <p className="text-xs text-gray-500 font-medium">Bảng thông tin đồng bộ thời gian thực với trung tâm giám sát thư ký</p>
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {sheetUrl && sheetUrl.trim().startsWith('http') && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-tactical-green text-[10px] font-black uppercase tracking-wider rounded-lg border border-green-100 animate-pulse">
+              <span className="w-1.5 h-1.5 bg-tactical-green rounded-full"></span>
+              TỰ ĐỘNG CẬP NHẬT 10S
+            </span>
+          )}
+          <button
+            onClick={handleExportToExcel}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-blue-600/10 cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            XUẤT EXCEL
+          </button>
+          <button
+            onClick={() => setShowSaveModal(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-tactical-green hover:bg-tactical-green-light active:scale-95 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-tactical-green/10 cursor-pointer"
+          >
+            <History className="w-4 h-4" />
+            LƯU LỊCH SỬ
+          </button>
         </div>
       </div>
 
@@ -1003,6 +1189,93 @@ export default function ESP32View() {
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Lưu lịch sử */}
+      <AnimatePresence>
+        {showSaveModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (!isSavingSession) setShowSaveModal(false);
+              }}
+              className="absolute inset-0 bg-black"
+            />
+            
+            {/* Modal Box */}
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl border border-gray-100 space-y-4 text-left"
+            >
+              <h3 className="font-headline font-black text-base text-gray-900 uppercase tracking-wide border-b border-gray-100 pb-3 flex items-center gap-2">
+                <History className="w-5 h-5 text-tactical-green" />
+                Lưu phiên bắn vào lịch sử
+              </h3>
+              
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Tên phiên bắn</label>
+                <input
+                  type="text"
+                  value={sessionSaveName}
+                  onChange={(e) => setSessionSaveName(e.target.value)}
+                  placeholder="Ví dụ: Kiểm tra bắn Đợt 1 - Tiểu đoàn 1"
+                  className="w-full px-4 py-3 bg-gray-50 focus:bg-white border border-gray-200 focus:border-tactical-green focus:ring-2 focus:ring-tactical-green/10 rounded-xl text-xs text-gray-900 placeholder-gray-400 font-bold outline-none transition-all text-left"
+                  disabled={isSavingSession || saveSuccess}
+                  autoFocus
+                />
+              </div>
+
+              {saveError && (
+                <div className="flex items-center gap-2.5 p-3.5 bg-red-50 border border-red-100 text-red-600 text-xs font-semibold rounded-xl animate-fade-in">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{saveError}</span>
+                </div>
+              )}
+
+              {saveSuccess && (
+                <div className="flex items-center gap-2.5 p-3.5 bg-green-50 border border-green-100 text-tactical-green text-xs font-semibold rounded-xl animate-fade-in">
+                  <CheckCircle className="w-4 h-4 shrink-0" />
+                  <span>Đã lưu phiên bắn thành công!</span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSaveModal(false)}
+                  disabled={isSavingSession || saveSuccess}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-[10px] uppercase rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveToHistory}
+                  disabled={isSavingSession || saveSuccess || !sessionSaveName.trim()}
+                  className="flex items-center gap-1.5 px-5 py-2 bg-tactical-green hover:bg-tactical-green-light active:scale-95 text-white font-black text-[10px] uppercase rounded-xl transition-all shadow-md shadow-tactical-green/10 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingSession ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Đang lưu...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Lưu lại
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
