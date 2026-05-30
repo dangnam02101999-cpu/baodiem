@@ -67,11 +67,12 @@ export default function ESP32View() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Google Sheets integration state
-  const [sheetUrl, setSheetUrl] = useState('');
+  const [sheetUrl, setSheetUrl] = useState(() => localStorage.getItem('google_sheet_sync_url') || '');
   const [importedData, setImportedData] = useState<any[] | null>(null);
   const [isSyncingSheet, setIsSyncingSheet] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [sheetSuccess, setSheetSuccess] = useState(false);
+  const [isAutoSyncActive, setIsAutoSyncActive] = useState(false);
 
   // Session saving states
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -86,6 +87,7 @@ export default function ESP32View() {
       return;
     }
 
+    localStorage.setItem('google_sheet_sync_url', sheetUrl);
     setIsSyncingSheet(true);
     setSheetError(null);
     setSheetSuccess(false);
@@ -227,6 +229,9 @@ export default function ESP32View() {
         throw new Error('Không thể phân tích dữ liệu nào từ Google Sheet.');
       }
 
+      // Determine if the imported file is 3 targets based on the overall data
+      const isSheetThreeTargets = getIsSheetThreeTargets(mappedEmployees);
+
       // Map the imported scores onto the existing admin-entered queue:
       const mergedData = shootingQueue.map((soldier, idx) => {
         const targetSTT = idx + 1;
@@ -240,7 +245,7 @@ export default function ESP32View() {
           // Total is strictly calculated offline, NOT synchronized from the Google Sheet
           const totalVal = t4 + t7 + t8;
           // Classification is strictly computed based on calculated total
-          const classificationVal = totalVal > 0 ? getClassification(totalVal) : '---';
+          const classificationVal = totalVal > 0 ? getClassification(totalVal, isSheetThreeTargets) : '---';
 
           return {
             ...soldier,
@@ -273,6 +278,7 @@ export default function ESP32View() {
 
       setImportedData(mergedData);
       setSheetSuccess(true);
+      setIsAutoSyncActive(true);
     } catch (err: any) {
       console.error(err);
       setSheetError(err.message || 'Đã xảy ra lỗi không xác định.');
@@ -287,9 +293,20 @@ export default function ESP32View() {
     syncFnRef.current = handleSyncGoogleSheet;
   });
 
-  // Trigger automatic sync every 10 seconds if sheet URL is provided
+  const initialSyncAttempted = React.useRef(false);
+
+  // Auto sync on mount once shootingQueue is ready if a Google Sheet URL is already set
   useEffect(() => {
-    if (!sheetUrl) return;
+    if (sheetUrl && shootingQueue.length > 0 && !initialSyncAttempted.current) {
+      initialSyncAttempted.current = true;
+      setIsAutoSyncActive(true);
+      handleSyncGoogleSheet();
+    }
+  }, [sheetUrl, shootingQueue]);
+
+  // Trigger automatic sync every 10 seconds if auto sync is active and sheet URL is provided
+  useEffect(() => {
+    if (!sheetUrl || !isAutoSyncActive) return;
 
     const trimmed = sheetUrl.trim();
     const isValid = trimmed.startsWith('http') && (
@@ -305,7 +322,7 @@ export default function ESP32View() {
     }, 10000);
 
     return () => clearInterval(intervalId);
-  }, [sheetUrl]);
+  }, [sheetUrl, isAutoSyncActive]);
 
   useEffect(() => {
     // Synchronize with raw real-time target hits
@@ -356,11 +373,29 @@ export default function ESP32View() {
     await playTts(phrase);
   };
 
-  const getClassification = (total: number) => {
-    if (total >= 72) return 'Giỏi';
-    if (total >= 55) return 'Khá';
-    if (total >= 45) return 'Đạt';
+  const getClassification = (total: number, isThreeTargets: boolean) => {
+    if (isThreeTargets) {
+      // Bài bắn 3 bia (tổng tối đa 90)
+      if (total >= 72) return 'Giỏi';
+      if (total >= 55) return 'Khá';
+      if (total >= 45) return 'Đạt';
+      return 'Không đạt';
+    }
+    // Bài bắn 1 bia (tổng tối đa 30)
+    if (total >= 24) return 'Giỏi';
+    if (total >= 19) return 'Khá';
+    if (total >= 15) return 'Đạt';
     return 'Không đạt';
+  };
+
+  const getIsSheetThreeTargets = (dataList: any[]) => {
+    if (!dataList || dataList.length === 0) return false;
+    return dataList.some(item => {
+      const has4 = item.target4 && item.target4 !== '-/-/-' && item.target4 !== '';
+      const has7 = item.target7 && item.target7 !== '-/-/-' && item.target7 !== '';
+      const has8 = item.target8 && item.target8 !== '-/-/-' && item.target8 !== '';
+      return (has4 && has7) || (has7 && has8) || (has4 && has8);
+    });
   };
 
   // Determine which round index is currently active
@@ -397,6 +432,8 @@ export default function ESP32View() {
     };
 
     const processedList: any[] = [];
+    const isSheetThreeTargets = importedData ? getIsSheetThreeTargets(importedData) : false;
+
     list.forEach((soldier, idx) => {
       let lane = (idx % 8) + 1;
       let scoreObj;
@@ -405,7 +442,7 @@ export default function ESP32View() {
         const t7 = parseScoreString(soldier.target7);
         const t8 = parseScoreString(soldier.target8);
         const total = soldier.total ?? (t4 + t7 + t8);
-        const classification = soldier.classification || (total > 0 ? getClassification(total) : '---');
+        const classification = soldier.classification || (total > 0 ? getClassification(total, isSheetThreeTargets) : '---');
         const hasShot = total > 0;
         lane = Number(soldier.lane) || ((idx % 8) + 1);
 
@@ -509,12 +546,17 @@ export default function ESP32View() {
       const sum8 = getLiveSum(lane, 8);
       const total = sum4 + sum7 + sum8;
 
+      const hasT4 = results.some(r => r.lane === lane && r.target === 4);
+      const hasT7 = results.some(r => r.lane === lane && r.target === 7);
+      const hasT8 = results.some(r => r.lane === lane && r.target === 8);
+      const isThreeTargets = hasT4 && hasT7 && hasT8;
+
       return {
         target4: getLiveScore(lane, 4),
         target7: getLiveScore(lane, 7),
         target8: getLiveScore(lane, 8),
         total,
-        classification: total > 0 ? getClassification(total) : '---',
+        classification: total > 0 ? getClassification(total, isThreeTargets) : '---',
         isSaved: false
       };
     }
@@ -532,6 +574,7 @@ export default function ESP32View() {
 
   const getCompleteResultsList = () => {
     const list = importedData || shootingQueue;
+    const isSheetThreeTargets = importedData ? getIsSheetThreeTargets(importedData) : false;
     return list.map((soldier, idx) => {
       const stt = idx + 1;
       let lane = (idx % 8) + 1;
@@ -546,7 +589,7 @@ export default function ESP32View() {
         t7 = soldier.target7 || '-/-/-';
         t8 = soldier.target8 || '-/-/-';
         totalValue = soldier.total ?? 0;
-        classificationVal = soldier.classification || '---';
+        classificationVal = soldier.classification || (totalValue > 0 ? getClassification(totalValue, isSheetThreeTargets) : '---');
         lane = Number(soldier.lane) || lane;
       } else {
         const turnIdx = Math.floor(idx / 8);
@@ -605,6 +648,7 @@ export default function ESP32View() {
       });
 
       setSaveSuccess(true);
+      setIsAutoSyncActive(false);
       setSessionSaveName('');
       setTimeout(() => {
         setShowSaveModal(false);
@@ -683,7 +727,7 @@ export default function ESP32View() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {sheetUrl && sheetUrl.trim().startsWith('http') && (
+          {isAutoSyncActive && sheetUrl && sheetUrl.trim().startsWith('http') && (
             <span className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-tactical-green text-[10px] font-black uppercase tracking-wider rounded-lg border border-green-100 animate-pulse">
               <span className="w-1.5 h-1.5 bg-tactical-green rounded-full"></span>
               TỰ ĐỘNG CẬP NHẬT 10S
@@ -1019,7 +1063,7 @@ export default function ESP32View() {
                     onClick={() => {
                       setImportedData(null);
                       setSheetSuccess(false);
-                      setSheetUrl('');
+                      setIsAutoSyncActive(false);
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase hover:bg-red-100 transition-all cursor-pointer"
                   >
@@ -1036,7 +1080,11 @@ export default function ESP32View() {
                     <input
                       type="url"
                       value={sheetUrl}
-                      onChange={(e) => setSheetUrl(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSheetUrl(val);
+                        localStorage.setItem('google_sheet_sync_url', val);
+                      }}
                       placeholder="Dán đường dẫn chia sẻ Google Sheet tại đây... (Ví dụ: https://docs.google.com/spreadsheets/d/...)"
                       className="w-full pl-10 pr-4 py-2.5 bg-gray-50 hover:bg-gray-100/50 focus:bg-white border border-gray-200 focus:border-tactical-green focus:ring-2 focus:ring-tactical-green/10 rounded-xl text-xs text-gray-900 placeholder-gray-400 font-medium outline-none transition-all"
                     />

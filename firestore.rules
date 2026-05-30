@@ -160,5 +160,9 @@ service cloud.firestore {
       allow read: if isAuthenticated() && request.auth.uid == userId;
       allow write: if isAdmin();
     }
+
+    match /active_roles/{deviceId} {
+      allow read, write: if true;
+    }
   }
 }

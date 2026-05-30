@@ -3,12 +3,54 @@ import { FileEdit, Target, BarChart3, ChevronRight, Settings2, Cpu } from 'lucid
 import { motion } from 'motion/react';
 import { Role } from '../types';
 import { initAudio } from '../lib/audio';
+import { db } from '../firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { toast } from 'react-hot-toast';
+
+const getDeviceId = () => {
+  let devId = localStorage.getItem('device_id');
+  if (!devId) {
+    devId = 'dev_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+    localStorage.setItem('device_id', devId);
+  }
+  return devId;
+};
 
 interface RoleSelectionViewProps {
   onSelectRole: (role: Role) => void;
 }
 
 export default function RoleSelectionView({ onSelectRole }: RoleSelectionViewProps) {
+  const [activeDevices, setActiveDevices] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    // Read the active devices list in real-time
+    const unsubscribe = onSnapshot(collection(db, 'active_roles'), (snapshot) => {
+      const list: any[] = [];
+      const now = Date.now();
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const updatedAt = data.updatedAt || 0;
+        // Keep only sessions that have been updated within the last 30 seconds
+        if (now - updatedAt < 30000) {
+          list.push({
+            id: docSnap.id,
+            ...data
+          });
+        }
+      });
+      setActiveDevices(list);
+    }, (error) => {
+      console.error("Lỗi khi tải trạng thái vai trò từ Firestore:", error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const devId = getDeviceId();
+  const secretaryCount = activeDevices.filter(d => d.role === 'SECRETARY' && d.id !== devId).length;
+  const reporterCount = activeDevices.filter(d => d.role === 'REPORTER' && d.id !== devId).length;
+
   const handleSelectRole = (role: Role) => {
     initAudio();
     onSelectRole(role);
@@ -34,21 +76,21 @@ export default function RoleSelectionView({ onSelectRole }: RoleSelectionViewPro
       title: 'XEM KẾT QUẢ', 
       level: 'Mức truy cập: Chỉ xem', 
       icon: BarChart3,
-      variant: 'outline'
+      gradient: 'from-tactical-green to-tactical-green-light'
     },
     { 
       id: 'CALIBRATION' as Role, 
       title: 'BẮN HIỆU CHỈNH', 
       level: 'Mức truy cập: Kỹ thuật', 
       icon: Settings2,
-      variant: 'outline'
+      gradient: 'from-tactical-green to-tactical-green-light'
     },
     { 
       id: 'ESP32' as Role, 
       title: 'THIẾT BỊ ESP32', 
       level: 'Mức truy cập: Phần cứng', 
       icon: Cpu,
-      variant: 'outline'
+      gradient: 'from-tactical-green to-tactical-green-light'
     },
   ];
 
@@ -77,40 +119,58 @@ export default function RoleSelectionView({ onSelectRole }: RoleSelectionViewPro
 
         {/* Role Selection Buttons */}
         <div className="flex flex-col gap-4">
-          {roles.map((role, index) => (
-            <motion.button
-              key={role.id}
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.2 + index * 0.1 }}
-              onClick={() => handleSelectRole(role.id)}
-              className={role.variant === 'outline' 
-                ? "group relative flex items-center justify-between w-full h-24 px-8 bg-[#e8e8e8] border-2 border-tactical-green/10 text-tactical-green rounded-md active:scale-95 transition-all duration-75 overflow-hidden"
-                : `group relative flex items-center justify-between w-full h-24 px-8 bg-gradient-to-r ${role.gradient} text-tactical-accent rounded-md shadow-lg active:scale-95 transition-all duration-75 overflow-hidden`
-              }
-            >
-              <div className="relative z-10 flex flex-col items-start text-left">
-                <span className={role.variant === 'outline' 
-                  ? "font-sans text-[10px] tracking-[0.2em] font-black text-tactical-green/60 uppercase"
-                  : "font-sans text-[10px] tracking-[0.2em] font-black text-tactical-accent/80 uppercase"
-                }>
-                  {role.level}
-                </span>
-                <span className="font-headline text-2xl font-black tracking-wider uppercase">
-                  {role.title}
-                </span>
-              </div>
-              <div className="relative z-10 flex items-center gap-4">
-                <role.icon className="w-10 h-10" />
-                <ChevronRight className="w-5 h-5 opacity-40 group-hover:translate-x-2 transition-transform" />
-              </div>
-              
-              {/* Aesthetic Detail */}
-              {role.variant !== 'outline' && (
-                <div className="absolute right-0 top-0 h-full w-32 bg-white/5 skew-x-[-20deg] translate-x-16"></div>
-              )}
-            </motion.button>
-          ))}
+          {roles.map((role, index) => {
+            const isLimitReached = (role.id === 'SECRETARY' && secretaryCount >= 1) || (role.id === 'REPORTER' && reporterCount >= 3);
+            const currentRoleCount = role.id === 'SECRETARY' ? secretaryCount : role.id === 'REPORTER' ? reporterCount : 0;
+            const maxRoleCount = role.id === 'SECRETARY' ? 1 : role.id === 'REPORTER' ? 3 : null;
+
+            return (
+              <motion.button
+                key={role.id}
+                initial={{ x: -20, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                transition={{ delay: 0.2 + index * 0.1 }}
+                onClick={() => {
+                  if (isLimitReached) {
+                    if (role.id === 'SECRETARY') {
+                      toast.error('Đã có thư ký, mời bạn vào xem kết quả.');
+                      alert('Đã có thư ký, mời bạn vào xem kết quả.');
+                    } else if (role.id === 'REPORTER') {
+                      toast.error('Đã đủ số lượng 3 máy báo bia, mời bạn vào xem kết quả.');
+                      alert('Đã đủ số lượng 3 máy báo bia, mời bạn vào xem kết quả.');
+                    }
+                    return;
+                  }
+                  handleSelectRole(role.id);
+                }}
+                className={isLimitReached
+                  ? "group relative flex items-center justify-between w-full h-24 px-8 bg-white border border-gray-300 text-gray-800 rounded-md shadow-sm active:scale-95 transition-all duration-75 overflow-hidden"
+                  : `group relative flex items-center justify-between w-full h-24 px-8 bg-gradient-to-r ${role.gradient} text-tactical-accent rounded-md shadow-lg active:scale-95 transition-all duration-75 overflow-hidden`
+                }
+              >
+                <div className="relative z-10 flex flex-col items-start text-left">
+                  <span className={isLimitReached
+                    ? "font-sans text-[10px] tracking-[0.2em] font-black text-gray-400 uppercase"
+                    : "font-sans text-[10px] tracking-[0.2em] font-black text-tactical-accent/80 uppercase"
+                  }>
+                    {isLimitReached ? `Đầy (${currentRoleCount}/${maxRoleCount})` : role.level}
+                  </span>
+                  <span className={`font-headline text-2xl font-black tracking-wider uppercase ${isLimitReached ? 'text-gray-400' : ''}`}>
+                    {role.title}
+                  </span>
+                </div>
+                <div className="relative z-10 flex items-center gap-4">
+                  <role.icon className={`w-10 h-10 ${isLimitReached ? 'text-gray-300' : 'text-current'}`} />
+                  <ChevronRight className={`w-5 h-5 opacity-40 group-hover:translate-x-2 transition-transform ${isLimitReached ? 'text-gray-300' : 'text-current'}`} />
+                </div>
+                
+                {/* Aesthetic Detail */}
+                {!isLimitReached && (
+                  <div className="absolute right-0 top-0 h-full w-32 bg-white/5 skew-x-[-20deg] translate-x-16"></div>
+                )}
+              </motion.button>
+            );
+          })}
         </div>
 
         {/* Technical Manual Footnote */}

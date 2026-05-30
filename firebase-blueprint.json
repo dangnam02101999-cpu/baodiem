@@ -99,9 +99,23 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "name", "lane", "scores", "total", "classification", "timestamp"]
+    },
+    "ActiveRole": {
+      "title": "Active Role",
+      "description": "Active session role of a connected device for concurrency limiting",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["SECRETARY", "REPORTER", "VIEWER", "CALIBRATION", "ESP32", ""] },
+        "updatedAt": { "type": "number", "description": "Unix timestamp or server timestamp" }
+      },
+      "required": ["role", "updatedAt"]
     }
   },
   "firestore": {
+    "active_roles/{deviceId}": {
+      "schema": "ActiveRole",
+      "description": "Heartbeat registration for active sessions per device"
+    },
     "shooting_results/{resultId}": {
       "schema": "ShootingResult",
       "description": "Collection of all shooting results"

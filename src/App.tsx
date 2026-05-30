@@ -10,10 +10,20 @@ import ManagementView from './views/ManagementView';
 import CalibrationView from './views/CalibrationView';
 import ESP32View from './views/ESP32View';
 import { Role } from './types';
-import { auth } from './firebase';
+import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 import { initAudio } from './lib/audio';
+
+const getDeviceId = () => {
+  let devId = localStorage.getItem('device_id');
+  if (!devId) {
+    devId = 'dev_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+    localStorage.setItem('device_id', devId);
+  }
+  return devId;
+};
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('LOGIN');
@@ -59,6 +69,47 @@ export default function App() {
     });
     return () => unsubscribe();
   }, [userRole, currentTab]);
+
+  // Register active role registration & maintain heartbeat
+  useEffect(() => {
+    const devId = getDeviceId();
+
+    if (!isLoggedIn || !selectedRole) {
+      // Clear registration if logged out or role cleared
+      deleteDoc(doc(db, 'active_roles', devId)).catch(err => {
+        console.error("Lỗi khi xóa đăng ký vai trò:", err);
+      });
+      return;
+    }
+
+    // Register active role
+    const updateHeartbeat = () => {
+      setDoc(doc(db, 'active_roles', devId), {
+        role: selectedRole,
+        updatedAt: Date.now()
+      }, { merge: true }).catch(err => {
+        console.error("Lỗi khi cập nhật heartbeat:", err);
+      });
+    };
+
+    updateHeartbeat();
+    const interval = setInterval(updateHeartbeat, 10000); // 10 seconds interval
+
+    // Handle session end if tab/window closed
+    const handleUnload = () => {
+      // Best-effort immediate delete
+      deleteDoc(doc(db, 'active_roles', devId)).catch(console.error);
+    };
+    window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleUnload);
+      deleteDoc(doc(db, 'active_roles', devId)).catch(err => {
+        console.error("Lỗi khi dừng vai trò hoạt động:", err);
+      });
+    };
+  }, [isLoggedIn, selectedRole]);
 
   const handleLogin = (role: 'ADMIN' | 'USER') => {
     setUserRole(role);
