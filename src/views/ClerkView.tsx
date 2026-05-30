@@ -280,6 +280,7 @@ export default function ClerkView() {
           position: soldier?.position || '---',
           unit: soldier?.unit || '---',
           lane,
+          round: currentRound + 1,
           scores: { target4: t4_scores, target7: t7_scores, target8: t8_scores },
           hits: { target4: t4_hits, target7: t7_hits, target8: t8_hits },
           total,
@@ -726,6 +727,8 @@ export default function ClerkView() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="text-[10px] font-black font-headline uppercase text-gray-400 border-b border-gray-100">
+                    <th className="py-2 px-4">STT</th>
+                    <th className="py-2 px-4">Lượt</th>
                     <th className="py-2 px-4">Họ và Tên</th>
                     <th className="py-2 px-4">Dải</th>
                     <th className="py-2 px-4 text-center">Bia 4</th>
@@ -736,42 +739,55 @@ export default function ClerkView() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {JSON.parse(localStorage.getItem('session_temp_results') || '[]').map((r: any, i: number) => (
-                    <tr key={i} className="text-xs hover:bg-gray-50 transition-colors">
-                      <td className="py-2 px-4 font-semibold">{r.name}</td>
-                      <td className="py-2 px-4 text-tactical-green font-bold">Dải {r.lane}</td>
-                      <td 
-                        className="py-2 px-4 text-center cursor-pointer hover:font-bold hover:text-tactical-green"
-                        onClick={() => setSelectedResult({ hits: r.hits.target4, target: 4, name: r.name, lane: r.lane, scores: r.scores.target4.split('/') })}
-                      >
-                        {r.scores.target4}
-                      </td>
-                      <td 
-                        className="py-2 px-4 text-center cursor-pointer hover:font-bold hover:text-tactical-green"
-                        onClick={() => setSelectedResult({ hits: r.hits.target7, target: 7, name: r.name, lane: r.lane, scores: r.scores.target7.split('/') })}
-                      >
-                        {r.scores.target7}
-                      </td>
-                      <td 
-                        className="py-2 px-4 text-center cursor-pointer hover:font-bold hover:text-tactical-green"
-                        onClick={() => setSelectedResult({ hits: r.hits.target8, target: 8, name: r.name, lane: r.lane, scores: r.scores.target8.split('/') })}
-                      >
-                        {r.scores.target8}
-                      </td>
-                      <td className="py-2 px-4 text-center font-black text-tactical-green">{r.total}</td>
-                      <td className="py-2 px-4 text-center">
-                        <span className={cn(
-                          "px-2 py-0.5 rounded-full text-[9px] font-black",
-                          r.classification === 'Giỏi' ? "bg-tactical-green text-tactical-accent" :
-                          r.classification === 'Khá' ? "bg-tactical-blue text-white" :
-                          r.classification === 'Đạt' ? "bg-tactical-warning text-white" :
-                          "bg-tactical-danger text-white"
-                        )}>
-                          {r.classification}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {(() => {
+                    const rawResults = JSON.parse(localStorage.getItem('session_temp_results') || '[]');
+                    const sortedResults = [...rawResults].sort((a, b) => {
+                      const roundA = typeof a.round === 'number' ? a.round : 1;
+                      const roundB = typeof b.round === 'number' ? b.round : 1;
+                      if (roundA !== roundB) return roundA - roundB;
+                      const laneA = Number(a.lane) || 0;
+                      const laneB = Number(b.lane) || 0;
+                      return laneA - laneB;
+                    });
+                    return sortedResults.map((r: any, i: number) => (
+                      <tr key={i} className="text-xs hover:bg-gray-50 transition-colors">
+                        <td className="py-2 px-4 font-mono text-[10px] font-bold text-gray-400">{i + 1}</td>
+                        <td className="py-2 px-4 font-black text-tactical-green text-[11px] uppercase">Lượt {r.round || 1}</td>
+                        <td className="py-2 px-4 font-semibold">{r.name}</td>
+                        <td className="py-2 px-4 text-tactical-green font-bold">Dải {r.lane}</td>
+                        <td 
+                          className="py-2 px-4 text-center cursor-pointer hover:font-bold hover:text-tactical-green"
+                          onClick={() => setSelectedResult({ hits: r.hits.target4, target: 4, name: r.name, lane: r.lane, scores: r.scores.target4.split('/') })}
+                        >
+                          {r.scores.target4}
+                        </td>
+                        <td 
+                          className="py-2 px-4 text-center cursor-pointer hover:font-bold hover:text-tactical-green"
+                          onClick={() => setSelectedResult({ hits: r.hits.target7, target: 7, name: r.name, lane: r.lane, scores: r.scores.target7.split('/') })}
+                        >
+                          {r.scores.target7}
+                        </td>
+                        <td 
+                          className="py-2 px-4 text-center cursor-pointer hover:font-bold hover:text-tactical-green"
+                          onClick={() => setSelectedResult({ hits: r.hits.target8, target: 8, name: r.name, lane: r.lane, scores: r.scores.target8.split('/') })}
+                        >
+                          {r.scores.target8}
+                        </td>
+                        <td className="py-2 px-4 text-center font-black text-tactical-green">{r.total}</td>
+                        <td className="py-2 px-4 text-center">
+                          <span className={cn(
+                            "px-2 py-0.5 rounded-full text-[9px] font-black",
+                            r.classification === 'Giỏi' ? "bg-tactical-green text-tactical-accent" :
+                            r.classification === 'Khá' ? "bg-tactical-blue text-white" :
+                            r.classification === 'Đạt' ? "bg-tactical-warning text-white" :
+                            "bg-tactical-danger text-white"
+                          )}>
+                            {r.classification}
+                          </span>
+                        </td>
+                      </tr>
+                    ));
+                  })()}
                 </tbody>
               </table>
             </div>

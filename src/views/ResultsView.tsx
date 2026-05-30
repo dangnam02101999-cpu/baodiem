@@ -19,10 +19,18 @@ export default function ResultsView() {
 
   useEffect(() => {
     // Listen to current_session_results for real-time updates of the ongoing session
-    const q = query(collection(db, 'current_session_results'), orderBy('timestamp', 'desc'));
+    const q = query(collection(db, 'current_session_results'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setSavedResults(results);
+      const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      const sortedResults = [...results].sort((a, b) => {
+        const roundA = typeof a.round === 'number' ? a.round : 1;
+        const roundB = typeof b.round === 'number' ? b.round : 1;
+        if (roundA !== roundB) return roundA - roundB;
+        const laneA = Number(a.lane) || 0;
+        const laneB = Number(b.lane) || 0;
+        return laneA - laneB;
+      });
+      setSavedResults(sortedResults);
       setIsLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'current_session_results');
@@ -217,6 +225,7 @@ export default function ResultsView() {
             <thead>
               <tr className="bg-[#f3f3f3]">
                 <th className="px-4 py-3 font-headline text-[9px] font-black text-gray-500 uppercase whitespace-nowrap">STT</th>
+                <th className="px-4 py-3 font-headline text-[9px] font-black text-gray-500 uppercase whitespace-nowrap">Lượt</th>
                 <th className="px-4 py-3 font-headline text-[9px] font-black text-gray-500 uppercase whitespace-nowrap">Họ và Tên</th>
                 <th className="px-4 py-3 font-headline text-[9px] font-black text-gray-500 uppercase whitespace-nowrap">Cấp bậc</th>
                 <th className="px-4 py-3 font-headline text-[9px] font-black text-gray-500 uppercase whitespace-nowrap">Chức vụ</th>
@@ -232,7 +241,7 @@ export default function ResultsView() {
             <tbody className="divide-y divide-gray-100">
               {filteredResults.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">
+                  <td colSpan={12} className="px-4 py-8 text-center text-gray-400 font-bold uppercase tracking-widest text-xs">
                     {searchTerm ? 'Không tìm thấy quân nhân phù hợp' : 'Chưa có kết quả trong phiên bắn hiện tại'}
                   </td>
                 </tr>
@@ -240,6 +249,7 @@ export default function ResultsView() {
                 filteredResults.map((result, index) => (
                   <tr key={result.id} className="hover:bg-[#f3f3f3] transition-colors">
                     <td className="px-4 py-4 font-mono text-[10px] font-bold text-gray-400">{index + 1}</td>
+                    <td className="px-4 py-4 font-black text-tactical-green text-xs uppercase">LƯỢT {result.round || 1}</td>
                     <td className="px-4 py-4 font-bold text-sm text-[#1a1c1c]">{result.name}</td>
                     <td className="px-4 py-4 text-xs text-gray-600">{result.rank}</td>
                     <td className="px-4 py-4 text-xs text-gray-600">{result.position}</td>
