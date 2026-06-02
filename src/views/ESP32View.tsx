@@ -245,7 +245,10 @@ export default function ESP32View() {
           // Total is strictly calculated offline, NOT synchronized from the Google Sheet
           const totalVal = t4 + t7 + t8;
           // Classification is strictly computed based on calculated total
-          const classificationVal = totalVal > 0 ? getClassification(totalVal, isSheetThreeTargets) : '---';
+          const hasShot = (sheetMatch.target4 && sheetMatch.target4 !== '-/-/-' && sheetMatch.target4 !== '---' && sheetMatch.target4 !== '') ||
+                          (sheetMatch.target7 && sheetMatch.target7 !== '-/-/-' && sheetMatch.target7 !== '---' && sheetMatch.target7 !== '') ||
+                          (sheetMatch.target8 && sheetMatch.target8 !== '-/-/-' && sheetMatch.target8 !== '---' && sheetMatch.target8 !== '');
+          const classificationVal = hasShot ? getClassification(totalVal, isSheetThreeTargets) : '---';
 
           return {
             ...soldier,
@@ -442,8 +445,10 @@ export default function ESP32View() {
         const t7 = parseScoreString(soldier.target7);
         const t8 = parseScoreString(soldier.target8);
         const total = soldier.total ?? (t4 + t7 + t8);
-        const classification = soldier.classification || (total > 0 ? getClassification(total, isSheetThreeTargets) : '---');
-        const hasShot = total > 0;
+        const hasShot = (soldier.target4 && soldier.target4 !== '-/-/-' && soldier.target4 !== '---' && soldier.target4 !== '') ||
+                        (soldier.target7 && soldier.target7 !== '-/-/-' && soldier.target7 !== '---' && soldier.target7 !== '') ||
+                        (soldier.target8 && soldier.target8 !== '-/-/-' && soldier.target8 !== '---' && soldier.target8 !== '');
+        const classification = soldier.classification || (hasShot ? getClassification(total, isSheetThreeTargets) : '---');
         lane = Number(soldier.lane) || ((idx % 8) + 1);
 
         scoreObj = {
@@ -550,13 +555,14 @@ export default function ESP32View() {
       const hasT7 = results.some(r => r.lane === lane && r.target === 7);
       const hasT8 = results.some(r => r.lane === lane && r.target === 8);
       const isThreeTargets = hasT4 && hasT7 && hasT8;
+      const hasAnyLiveShot = results.some(r => r.lane === lane);
 
       return {
         target4: getLiveScore(lane, 4),
         target7: getLiveScore(lane, 7),
         target8: getLiveScore(lane, 8),
         total,
-        classification: total > 0 ? getClassification(total, isThreeTargets) : '---',
+        classification: hasAnyLiveShot ? getClassification(total, isThreeTargets) : '---',
         isSaved: false
       };
     }
@@ -589,7 +595,10 @@ export default function ESP32View() {
         t7 = soldier.target7 || '-/-/-';
         t8 = soldier.target8 || '-/-/-';
         totalValue = soldier.total ?? 0;
-        classificationVal = soldier.classification || (totalValue > 0 ? getClassification(totalValue, isSheetThreeTargets) : '---');
+        const hasShot = (t4 && t4 !== '-/-/-' && t4 !== '---' && t4 !== '') ||
+                        (t7 && t7 !== '-/-/-' && t7 !== '---' && t7 !== '') ||
+                        (t8 && t8 !== '-/-/-' && t8 !== '---' && t8 !== '');
+        classificationVal = soldier.classification || (hasShot ? getClassification(totalValue, isSheetThreeTargets) : '---');
         lane = Number(soldier.lane) || lane;
       } else {
         const turnIdx = Math.floor(idx / 8);
