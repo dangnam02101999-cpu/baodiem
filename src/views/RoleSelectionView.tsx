@@ -174,18 +174,16 @@ export default function RoleSelectionView({ onSelectRole }: RoleSelectionViewPro
         </div>
 
         {/* Technical Manual Footnote */}
-        <div className="pt-8 border-t border-gray-200 flex justify-between items-end">
-          <div className="flex flex-col">
-            <span className="font-sans text-[10px] font-bold text-gray-400 uppercase tracking-widest">Giao thức ID</span>
-            <span className="font-headline font-medium text-xs">V.04-DELTA-2024</span>
-          </div>
-          <div className="text-right flex flex-col items-end">
-            <span className="font-sans text-[10px] font-bold text-gray-400 uppercase tracking-widest">ESP32: Sẵn sàng</span>
-            <span className="font-headline font-bold text-xs text-tactical-green flex items-center gap-1">
-              <div className="w-2 h-2 bg-tactical-green rounded-full"></div>
-              ĐƯỜNG TRUYỀN BẢO MẬT
-            </span>
-          </div>
+        <div className="pt-8 border-t border-gray-200 text-left flex flex-col gap-1 items-start">
+          <span className="font-sans text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+            Bản quyền: Nguyễn Đặng Phương Nam
+          </span>
+          <span className="font-sans text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+            Địa chỉ Email: <span className="normal-case">dangnam02101999@gmail.com</span>
+          </span>
+          <span className="font-sans text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+            Số điện thoại: 0367789970
+          </span>
         </div>
       </div>
     </div>
