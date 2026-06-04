@@ -49,8 +49,7 @@ export default function ClerkView() {
     const qQueue = query(collection(db, 'shooting_queue'), orderBy('order', 'asc'));
     const unsubscribeQueue = onSnapshot(qQueue, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Mark mock soldiers so we don't try to update them in Firestore
-      setShootingQueue(data.length > 0 ? data : MOCK_SOLDIERS.map(s => ({ ...s, isMock: true })));
+      setShootingQueue(data);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'shooting_queue');
     });
@@ -373,11 +372,11 @@ export default function ClerkView() {
       // Reset everything
       localStorage.removeItem('session_temp_results');
       
-      // Reset statuses in queue instead of deleting the whole queue
+      // Delete the whole queue to reset it to completely empty/blank (reset trắng) as requested
       const queueSnapshot = await getDocs(collection(db, 'shooting_queue'));
       const batch = writeBatch(db);
       queueSnapshot.docs.forEach(d => {
-        batch.update(d.ref, { status: 'Pending' });
+        batch.delete(d.ref);
       });
       await batch.commit();
 

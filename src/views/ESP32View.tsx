@@ -341,8 +341,7 @@ export default function ESP32View() {
     const qQueue = query(collection(db, 'shooting_queue'), orderBy('order', 'asc'));
     const unsubscribeQueue = onSnapshot(qQueue, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Fallback to MOCK_SOLDIERS exactly like clerk/secretary view for consistent data
-      setShootingQueue(data.length > 0 ? data : MOCK_SOLDIERS.map(s => ({ ...s, isMock: true })));
+      setShootingQueue(data);
       setIsLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'shooting_queue');
