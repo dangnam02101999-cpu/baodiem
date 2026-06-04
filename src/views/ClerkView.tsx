@@ -50,6 +50,32 @@ export default function ClerkView() {
     const unsubscribeQueue = onSnapshot(qQueue, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setShootingQueue(data);
+      if (data.length === 0) {
+        localStorage.removeItem('session_temp_results');
+        setCurrentRound(0);
+        
+        // Asynchronously clear shooting_results and current_session_results in Firestore
+        const clearRunState = async () => {
+          try {
+            const resultsSnapshot = await getDocs(collection(db, 'shooting_results'));
+            if (!resultsSnapshot.empty) {
+              const resBatch = writeBatch(db);
+              resultsSnapshot.docs.forEach(d => resBatch.delete(d.ref));
+              await resBatch.commit();
+            }
+
+            const currentResSnapshot = await getDocs(collection(db, 'current_session_results'));
+            if (!currentResSnapshot.empty) {
+              const currentResBatch = writeBatch(db);
+              currentResSnapshot.docs.forEach(d => currentResBatch.delete(d.ref));
+              await currentResBatch.commit();
+            }
+          } catch (err) {
+            console.error('Lỗi khi tự động dọn dẹp dữ liệu cũ:', err);
+          }
+        };
+        clearRunState();
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'shooting_queue');
     });
